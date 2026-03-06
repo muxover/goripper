@@ -59,6 +59,14 @@ type funcRange struct {
 	name       string
 }
 
+// leaRef records the byte offset of a LEA/MOV RIP-relative instruction in textData
+// and the name of the function containing it. Stored per target VA so the second pass
+// can look at nearby instructions for a string-length immediate.
+type leaRef struct {
+	instrPos int
+	funcName string
+}
+
 func buildFuncRanges(funcs []functions.Function) []funcRange {
 	ranges := make([]funcRange, 0, len(funcs))
 	for _, f := range funcs {
@@ -111,7 +119,7 @@ func CrossReference(
 	}
 
 	franges := buildFuncRanges(funcs)
-	refs := make(map[uint64][]string)
+	refs := make(map[uint64][]leaRef)
 
 	pos := 0
 	for pos < len(textData) {
@@ -139,7 +147,7 @@ func CrossReference(
 						funcName := findContainingFunc(instrVA, franges)
 						if funcName != "" {
 							uva := uint64(targetVA)
-							refs[uva] = appendUniq(refs[uva], funcName)
+							refs[uva] = append(refs[uva], leaRef{instrPos: pos, funcName: funcName})
 						}
 					}
 				}
@@ -151,19 +159,21 @@ func CrossReference(
 
 	// Annotate strings already found by the header-pair scan.
 	for i := range strs {
-		if names, ok := refs[strs[i].Offset]; ok {
-			strs[i].ReferencedBy = names
+		if lrefs, ok := refs[strs[i].Offset]; ok {
+			for _, lr := range lrefs {
+				strs[i].ReferencedBy = appendUniq(strs[i].ReferencedBy, lr.funcName)
+			}
 		}
 	}
 
 	// Emit new strings for LEA targets not found by the header-pair scan.
-	// These are strings referenced only from code (no adjacent header in .rodata).
-	// We scan for a printable ASCII run starting at the target VA, capped at 512 bytes.
+	// Try to infer the exact length from nearby MOV instructions; fall back to
+	// a 512-byte printable run when no length immediate is found.
 	seen := make(map[uint64]bool, len(strs))
 	for _, s := range strs {
 		seen[s.Offset] = true
 	}
-	for va, funcNames := range refs {
+	for va, lrefs := range refs {
 		if seen[va] {
 			continue
 		}
@@ -174,22 +184,86 @@ func CrossReference(
 		if off >= uint64(len(rodataData)) {
 			continue
 		}
-		end := off
-		for end < uint64(len(rodataData)) && rodataData[end] >= 0x20 && rodataData[end] <= 0x7e && end-off < 512 {
-			end++
+
+		// Try exact length from a nearby MOV reg, imm instruction.
+		length := 0
+		for _, lr := range lrefs {
+			if l := findLengthNearby(textData, lr.instrPos); l > 0 {
+				length = l
+				break
+			}
 		}
-		if end-off < uint64(minStringLen) {
-			continue
+
+		var value string
+		if length > 0 {
+			end := off + uint64(length)
+			if end <= uint64(len(rodataData)) {
+				b := rodataData[off:end]
+				if isPrintableASCII(b) {
+					value = string(b)
+				}
+			}
+		}
+		if value == "" {
+			// Fallback: 512-byte printable run.
+			end := off
+			for end < uint64(len(rodataData)) && rodataData[end] >= 0x20 && rodataData[end] <= 0x7e && end-off < 512 {
+				end++
+			}
+			if end-off < uint64(minStringLen) {
+				continue
+			}
+			value = string(rodataData[off:end])
+		}
+
+		var funcNames []string
+		seenFn := make(map[string]bool)
+		for _, lr := range lrefs {
+			if lr.funcName != "" && !seenFn[lr.funcName] {
+				seenFn[lr.funcName] = true
+				funcNames = append(funcNames, lr.funcName)
+			}
 		}
 		strs = append(strs, ExtractedString{
-			Value:        string(rodataData[off:end]),
+			Value:        value,
 			Offset:       va,
 			ReferencedBy: funcNames,
 		})
 	}
 
-
 	return strs
+}
+
+// findLengthNearby scans up to 15 instructions forward from instrPos in textData,
+// returning the first MOV immediate in [minStringLen, 4096]. This covers the common
+// Go compiler pattern where string length is loaded into a register right after the
+// LEA that loads the string pointer. Returns 0 if no such immediate is found.
+func findLengthNearby(textData []byte, instrPos int) int {
+	if instrPos < 0 || instrPos >= len(textData) {
+		return 0
+	}
+	pos := instrPos
+	for i := 0; i < 15 && pos < len(textData); i++ {
+		inst, err := x86asm.Decode(textData[pos:], 64)
+		if err != nil {
+			break
+		}
+		if inst.Op == x86asm.MOV {
+			for _, arg := range inst.Args {
+				if arg == nil {
+					continue
+				}
+				if imm, ok := arg.(x86asm.Imm); ok {
+					v := int64(imm)
+					if v >= int64(minStringLen) && v <= 4096 {
+						return int(v)
+					}
+				}
+			}
+		}
+		pos += inst.Len
+	}
+	return 0
 }
 
 // CrossReferenceSimple uses raw 64-bit address scanning as a fallback for

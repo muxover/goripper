@@ -15,7 +15,7 @@ func Recover(bin gobinary.Binary) ([]RecoveredType, error) {
 
 	rodataData, rodataVA, err := readRodata(bin)
 	if err != nil {
-		return nil, err
+		return []RecoveredType{}, err
 	}
 
 	order := binary.LittleEndian
@@ -28,6 +28,9 @@ func Recover(bin gobinary.Binary) ([]RecoveredType, error) {
 
 	// Strategy 2: Scan .rodata for type name strings prefixed with known patterns
 	types = scanForTypeNames(rodataData, rodataVA, order, ptrSize)
+	if types == nil {
+		types = []RecoveredType{}
+	}
 
 	return types, nil
 }

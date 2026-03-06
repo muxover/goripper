@@ -58,11 +58,21 @@ func IsPclntabMagic(v uint32) bool {
 func ScanForPclntab(data []byte) int {
 	for i := 0; i+8 <= len(data); i += 4 {
 		v := binary.LittleEndian.Uint32(data[i : i+4])
-		if IsPclntabMagic(v) && isValidPclntabHeader(data[i:]) {
+		if IsPclntabMagic(v) && isValidPclntabHeader(data[i:]) && pclntabNfunc(data[i:]) > 10 {
 			return i
 		}
 	}
 	return -1
+}
+
+// pclntabNfunc reads the lower 32 bits of the nfunc field from a pclntab header.
+// In all pclntab versions the nfunc (or its low 32 bits in 64-bit layouts) lives at
+// bytes [8:12], so a simple uint32 read is sufficient as a false-positive guard.
+func pclntabNfunc(data []byte) uint32 {
+	if len(data) < 12 {
+		return 0
+	}
+	return binary.LittleEndian.Uint32(data[8:12])
 }
 
 // isValidPclntabHeader performs sanity checks on the pclntab header bytes.

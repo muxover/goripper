@@ -126,7 +126,7 @@ func (b *PEBinary) FindGopclntab() ([]byte, uint64, error) {
 
 		for i := 0; i+8 <= len(data); i += 4 {
 			v := binary.LittleEndian.Uint32(data[i : i+4])
-			if IsPclntabMagic(v) && isValidPclntabHeader(data[i:]) {
+			if IsPclntabMagic(v) && isValidPclntabHeader(data[i:]) && pclntabNfunc(data[i:]) > 10 {
 				sectionVA := b.imgBase + uint64(s.VirtualAddress)
 				return data[i:], sectionVA + uint64(i), nil
 			}
