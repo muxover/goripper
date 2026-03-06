@@ -134,18 +134,21 @@ func (a *Analyzer) extractStrings() error {
 	}
 
 	strs := gstrings.Extract(rodataData, rodataVA)
-	strs = gstrings.Classify(strs)
 
-	// Cross-reference strings to functions via disassembly
+	// Cross-reference strings to functions via disassembly.
+	// CrossReference may also emit new strings found via LEA but missed by the
+	// header-pair scan, so Classify runs after both passes.
 	textData, err2 := a.binary.Section(".text")
 	if err2 == nil {
 		textVA, _ := a.binary.SectionVA(".text")
 		rodataEnd := rodataVA + uint64(len(rodataData))
 
-		strs = gstrings.CrossReference(strs, a.funcs, textData, textVA, rodataVA, rodataEnd)
+		strs = gstrings.CrossReference(strs, a.funcs, textData, textVA, rodataData, rodataVA, rodataEnd)
 		// Also try simple address scan as supplementary method
 		strs = gstrings.CrossReferenceSimple(strs, a.funcs, textData, textVA)
 	}
+
+	strs = gstrings.Classify(strs)
 
 	// Attach referenced strings to function structs
 	funcStringMap := make(map[string][]string)

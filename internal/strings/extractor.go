@@ -89,16 +89,19 @@ func appendUniq(slice []string, s string) []string {
 
 // CrossReference annotates each string with the names of functions whose
 // disassembly references the string's virtual address via LEA instructions
-// (RIP-relative addressing in x86_64).
+// (RIP-relative addressing in x86_64). It also emits new strings for LEA
+// targets not found by the header-pair scan (e.g. strings only referenced
+// from code and not stored with an adjacent header in .rodata).
 func CrossReference(
 	strs []ExtractedString,
 	funcs []functions.Function,
 	textData []byte,
 	textVA uint64,
+	rodataData []byte,
 	rodataVA uint64,
 	rodataEnd uint64,
 ) []ExtractedString {
-	if len(strs) == 0 || len(funcs) == 0 || len(textData) == 0 {
+	if len(funcs) == 0 || len(textData) == 0 {
 		return strs
 	}
 
@@ -146,11 +149,45 @@ func CrossReference(
 		pos += inst.Len
 	}
 
+	// Annotate strings already found by the header-pair scan.
 	for i := range strs {
 		if names, ok := refs[strs[i].Offset]; ok {
 			strs[i].ReferencedBy = names
 		}
 	}
+
+	// Emit new strings for LEA targets not found by the header-pair scan.
+	// These are strings referenced only from code (no adjacent header in .rodata).
+	// We scan for a printable ASCII run starting at the target VA, capped at 512 bytes.
+	seen := make(map[uint64]bool, len(strs))
+	for _, s := range strs {
+		seen[s.Offset] = true
+	}
+	for va, funcNames := range refs {
+		if seen[va] {
+			continue
+		}
+		if va < rodataVA || va >= rodataEnd {
+			continue
+		}
+		off := va - rodataVA
+		if off >= uint64(len(rodataData)) {
+			continue
+		}
+		end := off
+		for end < uint64(len(rodataData)) && rodataData[end] >= 0x20 && rodataData[end] <= 0x7e && end-off < 512 {
+			end++
+		}
+		if end-off < uint64(minStringLen) {
+			continue
+		}
+		strs = append(strs, ExtractedString{
+			Value:        string(rodataData[off:end]),
+			Offset:       va,
+			ReferencedBy: funcNames,
+		})
+	}
+
 
 	return strs
 }
