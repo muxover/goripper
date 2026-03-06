@@ -7,8 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.4-pre: Garble/Obfuscation Detection & Stripped Binary Resilience -->
-<!-- v0.0.5-pre: General-purpose CMOVNE plain-blob splitting -->
+<!-- v0.0.5-pre: CMOVNE plain-blob splitting & register-aware findLengthNearby   -->
+<!-- v0.0.6-pre: Test coverage (8 packages @ 0%), ELF Linux CI, input robustness -->
+<!-- v0.0.7-pre: String dedup, per-type summary counts, pclntab version, filters  -->
+
+## [0.0.4-pre] - 2026-03-07
+
+### Added
+- `internal/obfuscation` package: Shannon-entropy name analysis, package-prefix ratio,
+  string-density check, and build-info absence combine into a 0.0–1.0 `ObfuscationScore`
+  with a human-readable `ObfuscationLevel` (none/low/medium/high) and `ObfuscationIndicators`
+  list. All fields added to `BinaryInfo` in JSON and text output.
+- Heuristic function re-labeling (`obfuscation.Relabel`): when score > 0.5, garbled
+  functions receive advisory tags such as `[suspected:network_connect]`,
+  `[suspected:exec]`, `[suspected:encryption]`, `[suspected:goroutine_spawn]`,
+  `[suspected:large_unknown]`. Clearly marked as heuristic.
+- String decryptor stub detection (`obfuscation.FindDecryptorStubs`): small (< 100 byte)
+  functions called by ≥ 50 callers are flagged as `[STRING_DECRYPTOR_STUB]` with caller
+  count in the tag. XOR key recovery (`TryDecodeXOR`) attempts static extraction of
+  single-byte XOR keys from stub bodies; key shown in JSON and text output.
+- `DecryptorStubs []DecryptorStubOutput` field added to `AnalysisResult` JSON.
+- `=== String Decryptor Stubs ===` section in text output when stubs are found.
+- Stripped binary fallback: when gopclntab is absent or fails to parse, the analyzer
+  records a `Warning` and falls back to generating synthetic `sub_0x<addr>` function
+  names from the PE `.pdata` exception table. `SyntheticFunctions` count added to
+  `SummaryOutput`. Text output marks synthetic functions with `[SYNTHETIC]`.
+- `FunctionSource` field (`"pclntab"` / `"symbol_table"` / `"synthetic"`) on every
+  `FunctionOutput` entry in JSON.
+- `Warnings []string` field on `AnalysisResult` — non-fatal pipeline issues
+  (pclntab absent, parse failure) are reported here rather than aborting analysis.
+  Warnings printed at the top of text output.
+- CGo boundary mapping (`behaviors.CGoBoundaries`): Go functions that directly call
+  into CGo bridge functions are collected into `SummaryOutput.CgoCallSites`.
+  `=== CGo Boundaries ===` section in text output when present.
+  `CGOFunctions` count added to `SummaryOutput`.
+- `debug/buildinfo` presence check: absence of build info is used as an obfuscation
+  signal and reported in `ObfuscationIndicators`.
+- 12 new tests across `internal/obfuscation` (entropy, scoring, relabeling) and
+  `internal/behaviors` (CGo boundary detection).
+
+### Fixed
+- `parsePclntab` and `extractFunctions` no longer abort the pipeline when gopclntab
+  is missing — they record a warning and continue with synthetic names.
 
 ## [0.0.3-pre] - 2026-03-03
 
