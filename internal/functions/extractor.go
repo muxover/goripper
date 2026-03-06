@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/muxover/goripper/internal/gopclntab"
@@ -28,9 +29,32 @@ func Extract(entries []gopclntab.FuncEntry) []Function {
 			Addr:    e.EntryPC,
 			Size:    e.Size,
 			Package: pkg,
+			Source:  SourcePclntab,
 		})
 	}
 
+	return funcs
+}
+
+// SyntheticFromAddrs builds a minimal function list from raw (addr, size) pairs
+// when pclntab is unavailable (garbled or stripped binary). Each function gets a
+// synthetic name of the form sub_0x<addr> matching IDA/Ghidra convention.
+func SyntheticFromAddrs(addrs [][2]uint64) []Function {
+	funcs := make([]Function, 0, len(addrs))
+	for _, pair := range addrs {
+		addr, size := pair[0], pair[1]
+		if addr == 0 {
+			continue
+		}
+		name := fmt.Sprintf("sub_0x%x", addr)
+		funcs = append(funcs, Function{
+			Name:    name,
+			Addr:    addr,
+			Size:    size,
+			Package: "",
+			Source:  SourceSynthetic,
+		})
+	}
 	return funcs
 }
 

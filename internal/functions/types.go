@@ -25,6 +25,15 @@ func (k PackageKind) String() string {
 	}
 }
 
+// FunctionSource describes where a function's name was obtained.
+type FunctionSource string
+
+const (
+	SourcePclntab     FunctionSource = "pclntab"       // normal: name from gopclntab
+	SourceSymbolTable FunctionSource = "symbol_table"  // name from ELF/PE symbol table fallback
+	SourceSynthetic   FunctionSource = "synthetic"     // generated name: sub_0x<addr>
+)
+
 // Function represents a parsed and classified function from a Go binary.
 type Function struct {
 	Name         string
@@ -32,6 +41,7 @@ type Function struct {
 	Size         uint64
 	Package      string
 	PackageKind  PackageKind
+	Source       FunctionSource // where the name came from
 	IsRuntime    bool
 	IsConcurrent bool
 	Calls        []string // callee names (populated by callgraph)

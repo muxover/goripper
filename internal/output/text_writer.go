@@ -9,8 +9,23 @@ import (
 
 // WriteText writes a human-readable analysis report to w.
 func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
+	// Warnings first so the analyst sees them immediately.
+	if len(result.Warnings) > 0 {
+		for _, warn := range result.Warnings {
+			fmt.Fprintf(w, "WARNING: %s\n", warn)
+		}
+		fmt.Fprintln(w)
+	}
+
 	writeBinaryInfo(result.BinaryInfo, w)
 	writeSummary(result.Summary, w)
+
+	if len(result.DecryptorStubs) > 0 {
+		writeDecryptorStubs(result.DecryptorStubs, w)
+	}
+	if len(result.Summary.CgoCallSites) > 0 {
+		writeCGoBoundaries(result.Summary.CgoCallSites, w)
+	}
 
 	if !opts.OnlyStrings {
 		writeFunctions(result.Functions, w, opts)
@@ -46,7 +61,19 @@ func writeBinaryInfo(info BinaryInfo, w io.Writer) {
 	fmt.Fprintf(w, "Format:     %s\n", info.Format)
 	fmt.Fprintf(w, "Arch:       %s\n", info.Arch)
 	fmt.Fprintf(w, "Go Version: %s\n", info.GoVersion)
-	fmt.Fprintf(w, "Size:       %d bytes\n\n", info.SizeBytes)
+	fmt.Fprintf(w, "Size:       %d bytes\n", info.SizeBytes)
+	if info.ObfuscationScore > 0 || info.ObfuscationLevel != "" {
+		level := info.ObfuscationLevel
+		if level == "" {
+			level = "none"
+		}
+		fmt.Fprintf(w, "Obfuscation: %.2f [%s]", info.ObfuscationScore, level)
+		if len(info.ObfuscationIndicators) > 0 {
+			fmt.Fprintf(w, "  (%s)", strings.Join(info.ObfuscationIndicators, ", "))
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintln(w)
 }
 
 func writeSummary(sum SummaryOutput, w io.Writer) {
@@ -55,10 +82,42 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 	fmt.Fprintf(w, "  User:               %d\n", sum.UserFunctions)
 	fmt.Fprintf(w, "  Stdlib:             %d\n", sum.StdlibFunctions)
 	fmt.Fprintf(w, "  Runtime:            %d\n", sum.RuntimeFunctions)
+	if sum.CGOFunctions > 0 {
+		fmt.Fprintf(w, "  CGo:                %d\n", sum.CGOFunctions)
+	}
+	if sum.SyntheticFunctions > 0 {
+		fmt.Fprintf(w, "  Synthetic:          %d  (sub_0x* — pclntab unavailable)\n", sum.SyntheticFunctions)
+	}
 	fmt.Fprintf(w, "Suspicious:           %d\n", sum.SuspiciousFunctions)
 	fmt.Fprintf(w, "Concurrent:           %d\n", sum.ConcurrentFunctions)
 	fmt.Fprintf(w, "Total strings:        %d (%d URLs)\n", sum.TotalStrings, sum.URLStrings)
-	fmt.Fprintf(w, "Recovered types:      %d\n\n", sum.RecoveredTypes)
+	fmt.Fprintf(w, "Recovered types:      %d\n", sum.RecoveredTypes)
+	if sum.DecryptorStubs > 0 {
+		fmt.Fprintf(w, "Decryptor stubs:      %d  (possible string encryption)\n", sum.DecryptorStubs)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeDecryptorStubs(stubs []DecryptorStubOutput, w io.Writer) {
+	fmt.Fprintf(w, "=== String Decryptor Stubs (%d) ===\n", len(stubs))
+	fmt.Fprintf(w, "These small, high-fan-in functions are likely string-decryption stubs (garble).\n")
+	for _, s := range stubs {
+		xor := ""
+		if s.XORKey != "" {
+			xor = fmt.Sprintf("  xor_key=%s", s.XORKey)
+		}
+		fmt.Fprintf(w, "  %s  %-40s  callers=%d%s\n", s.Addr, s.Name, s.CallerCount, xor)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeCGoBoundaries(callSites []string, w io.Writer) {
+	fmt.Fprintf(w, "=== CGo Boundaries (%d call sites) ===\n", len(callSites))
+	fmt.Fprintf(w, "Go memory safety ends at these transition points.\n")
+	for _, site := range callSites {
+		fmt.Fprintf(w, "  %s\n", site)
+	}
+	fmt.Fprintln(w)
 }
 
 func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
@@ -69,7 +128,6 @@ func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
 
 	fmt.Fprintf(w, "=== Functions (%d) ===\n", len(filtered))
 
-	// Group by package
 	byPkg := make(map[string][]FunctionOutput)
 	var pkgs []string
 	for _, f := range filtered {
@@ -92,16 +150,18 @@ func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
 			if f.IsConcurrent {
 				concurrent = " [CONCURRENT]"
 			}
-			fmt.Fprintf(w, "  %s  %-60s  size=%d%s%s\n",
-				f.Addr, f.Name, f.Size, tags, concurrent)
+			src := ""
+			if f.FunctionSource == "synthetic" {
+				src = " [SYNTHETIC]"
+			}
+			fmt.Fprintf(w, "  %s  %-60s  size=%d%s%s%s\n",
+				f.Addr, f.Name, f.Size, tags, concurrent, src)
 
 			if opts.ShowPseudo && f.Pseudocode != "" {
-				lines := strings.Split(strings.TrimSpace(f.Pseudocode), "\n")
-				for _, line := range lines {
+				for _, line := range strings.Split(strings.TrimSpace(f.Pseudocode), "\n") {
 					fmt.Fprintf(w, "    %s\n", line)
 				}
 			}
-
 			if len(f.Calls) > 0 {
 				fmt.Fprintf(w, "    calls: %s\n", strings.Join(f.Calls, ", "))
 			}
@@ -132,7 +192,6 @@ func writeStrings(strs []StringOutput, w io.Writer, opts TextOptions) {
 
 	fmt.Fprintf(w, "=== Strings (%d) ===\n", len(filtered))
 
-	// Group by type
 	byType := make(map[string][]StringOutput)
 	var types []string
 	for _, s := range filtered {
@@ -151,7 +210,6 @@ func writeStrings(strs []StringOutput, w io.Writer, opts TextOptions) {
 			if len(s.ReferencedBy) > 0 {
 				refs = fmt.Sprintf("  (ref: %s)", strings.Join(s.ReferencedBy, ", "))
 			}
-			// Truncate very long strings
 			val := s.Value
 			if len(val) > 120 {
 				val = val[:117] + "..."
@@ -182,7 +240,6 @@ func writeCallGraph(graph map[string][]string, w io.Writer, opts TextOptions) {
 
 	fmt.Fprintf(w, "=== Call Graph ===\n")
 
-	// Sort callers for deterministic output
 	callers := make([]string, 0, len(graph))
 	for caller := range graph {
 		callers = append(callers, caller)
