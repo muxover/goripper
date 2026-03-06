@@ -25,6 +25,10 @@ var (
 	reEndpoint = regexp.MustCompile(
 		`(?i)^/[a-zA-Z0-9/_\-]{3,}(\?[^\s]*)?$`,
 	)
+	// Go module/import paths: e.g. golang.org/x/crypto, github.com/user/repo
+	rePkgPath = regexp.MustCompile(
+		`^[a-z0-9]([a-z0-9\-]*\.)+[a-z]{2,}/[a-zA-Z0-9/_.\-]+$`,
+	)
 )
 
 // Classify assigns a StringType to each extracted string based on content patterns.
@@ -43,7 +47,7 @@ func classifyOne(v string) StringType {
 		return StringTypePlain
 	}
 
-	if reURL.MatchString(trimmed) {
+	if reURL.MatchString(trimmed) || gostrings.Contains(trimmed, "://") {
 		return StringTypeURL
 	}
 
@@ -62,6 +66,10 @@ func classifyOne(v string) StringType {
 	// API endpoint-like paths
 	if reEndpoint.MatchString(trimmed) {
 		return StringTypePath
+	}
+
+	if rePkgPath.MatchString(trimmed) {
+		return StringTypePkgPath
 	}
 
 	return StringTypePlain

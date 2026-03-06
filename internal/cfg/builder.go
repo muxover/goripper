@@ -1,6 +1,8 @@
 package cfg
 
 import (
+	"strings"
+
 	"github.com/muxover/goripper/internal/functions"
 	"golang.org/x/arch/x86/x86asm"
 )
@@ -27,6 +29,10 @@ func Build(fn functions.Function, textData []byte, textVA uint64) (*CFG, error) 
 	// Step 1: Decode all instructions
 	instrs := decodeAll(funcData, fn.Addr)
 	if len(instrs) == 0 {
+		return &CFG{FuncName: fn.Name, FuncAddr: fn.Addr}, nil
+	}
+
+	if isStubName(fn.Name) || !hasValidPrologue(instrs) {
 		return &CFG{FuncName: fn.Name, FuncAddr: fn.Addr}, nil
 	}
 
@@ -206,4 +212,24 @@ func appendUniq(slice []int, v int) []int {
 		}
 	}
 	return append(slice, v)
+}
+
+func isStubName(name string) bool {
+	for _, prefix := range []string{"go:buildid", "go:cgo_", "_cgo_", "type:.", "go:."} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasValidPrologue(instrs []DecodedInstr) bool {
+	if len(instrs) == 0 {
+		return false
+	}
+	switch instrs[0].Inst.Op {
+	case x86asm.CMP, x86asm.SUB, x86asm.PUSH, x86asm.MOV:
+		return true
+	}
+	return false
 }
