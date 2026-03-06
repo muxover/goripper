@@ -6,8 +6,10 @@ import (
 )
 
 var (
+	reURLScheme = regexp.MustCompile(`https?://`)
+
 	reURL = regexp.MustCompile(
-		`(?i)^(https?|ftp|ws|wss)://[^\s]{3,}$`,
+		`(?i)^[a-z][a-z0-9+\-.]*://[^\s]{3,}$`,
 	)
 	reIP = regexp.MustCompile(
 		`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$`,
@@ -47,7 +49,7 @@ func classifyOne(v string) StringType {
 		return StringTypePlain
 	}
 
-	if reURL.MatchString(trimmed) || gostrings.Contains(trimmed, "://") {
+	if reURL.MatchString(trimmed) {
 		return StringTypeURL
 	}
 
@@ -73,4 +75,54 @@ func classifyOne(v string) StringType {
 	}
 
 	return StringTypePlain
+}
+
+// SplitConcatenatedURLs breaks apart any URL-typed string that contains multiple
+// embedded URL starts (e.g. "https://a.com/...https://b.com/..."). This handles the
+// CMOVNE compiler pattern where adjacent .rodata strings have no separator and our
+// length inference falls back to a 512-byte printable run.
+//
+// Only strings that start with "https?://" and contain at least one additional
+// "https?://" are split. Non-URL strings and strings with a single URL are returned
+// unchanged. The original blob is replaced by its individual components.
+func SplitConcatenatedURLs(strs []ExtractedString) []ExtractedString {
+	seen := make(map[string]bool, len(strs))
+	for _, s := range strs {
+		seen[s.Value] = true
+	}
+
+	result := make([]ExtractedString, 0, len(strs))
+	for _, s := range strs {
+		if s.Type != StringTypeURL {
+			result = append(result, s)
+			continue
+		}
+		locs := reURLScheme.FindAllStringIndex(s.Value, -1)
+		// Only split if the string itself starts with a URL scheme and has more than one.
+		if len(locs) <= 1 || locs[0][0] != 0 {
+			result = append(result, s)
+			continue
+		}
+		for i, loc := range locs {
+			end := len(s.Value)
+			if i+1 < len(locs) {
+				end = locs[i+1][0]
+			}
+			part := s.Value[loc[0]:end]
+			if len(part) < minStringLen {
+				continue
+			}
+			if seen[part] {
+				continue
+			}
+			seen[part] = true
+			result = append(result, ExtractedString{
+				Value:        part,
+				Type:         StringTypeURL,
+				Offset:       s.Offset + uint64(loc[0]),
+				ReferencedBy: s.ReferencedBy,
+			})
+		}
+	}
+	return result
 }

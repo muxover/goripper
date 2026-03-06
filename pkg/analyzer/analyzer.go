@@ -149,6 +149,7 @@ func (a *Analyzer) extractStrings() error {
 	}
 
 	strs = gstrings.Classify(strs)
+	strs = gstrings.SplitConcatenatedURLs(strs)
 
 	// Attach referenced strings to function structs
 	funcStringMap := make(map[string][]string)
