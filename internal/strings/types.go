@@ -4,11 +4,12 @@ package strings
 type StringType string
 
 const (
-	StringTypeURL    StringType = "url"
-	StringTypeIP     StringType = "ip"
-	StringTypePath   StringType = "path"
-	StringTypeSecret StringType = "secret"
-	StringTypePlain  StringType = "plain"
+	StringTypeURL     StringType = "url"
+	StringTypeIP      StringType = "ip"
+	StringTypePath    StringType = "path"
+	StringTypeSecret  StringType = "secret"
+	StringTypePkgPath StringType = "pkgpath"
+	StringTypePlain   StringType = "plain"
 )
 
 // ExtractedString is a string found in the binary with metadata.

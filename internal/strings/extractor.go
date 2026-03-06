@@ -7,35 +7,51 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 )
 
-const minStringLen = 4
+const minStringLen = 6
 
-// Extract scans rodataData for printable strings of length >= minStringLen.
-// rodataVA is the virtual address of the .rodata section start.
+// Extract scans rodataData for Go string header pairs (ptr uint64, len uint64)
+// at 8-byte aligned offsets. Only emits strings where ptr points back into
+// .rodata, len is in range [minStringLen, 4096], and all bytes are printable ASCII.
 func Extract(rodataData []byte, rodataVA uint64) []ExtractedString {
+	rodataEnd := rodataVA + uint64(len(rodataData))
+	seen := make(map[string]bool)
 	var result []ExtractedString
-	i := 0
-	for i < len(rodataData) {
-		if !isPrintable(rodataData[i]) {
-			i++
+
+	for i := 0; i+16 <= len(rodataData); i += 8 {
+		ptr := binary.LittleEndian.Uint64(rodataData[i:])
+		slen := binary.LittleEndian.Uint64(rodataData[i+8:])
+
+		if ptr < rodataVA || ptr >= rodataEnd {
 			continue
 		}
-		j := i
-		for j < len(rodataData) && isPrintable(rodataData[j]) {
-			j++
+		if slen < uint64(minStringLen) || slen > 4096 {
+			continue
 		}
-		if j-i >= minStringLen {
-			result = append(result, ExtractedString{
-				Value:  string(rodataData[i:j]),
-				Offset: rodataVA + uint64(i),
-			})
+		off := ptr - rodataVA
+		if off+slen > uint64(len(rodataData)) {
+			continue
 		}
-		i = j + 1
+		b := rodataData[off : off+slen]
+		if !isPrintableASCII(b) {
+			continue
+		}
+		s := string(b)
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		result = append(result, ExtractedString{Value: s, Offset: ptr})
 	}
 	return result
 }
 
-func isPrintable(b byte) bool {
-	return (b >= 32 && b <= 126) || b == '\t' || b == '\n' || b == '\r'
+func isPrintableASCII(b []byte) bool {
+	for _, c := range b {
+		if c < 0x20 || c > 0x7E {
+			return false
+		}
+	}
+	return true
 }
 
 type funcRange struct {
@@ -114,11 +130,13 @@ func CrossReference(
 					continue
 				}
 				if mem.Base == x86asm.RIP {
-					targetVA := instrVA + uint64(inst.Len) + uint64(mem.Disp)
-					if targetVA >= rodataVA && targetVA < rodataEnd {
+					var disp int64 = mem.Disp
+					targetVA := int64(instrVA) + int64(inst.Len) + disp
+					if targetVA >= int64(rodataVA) && targetVA < int64(rodataEnd) {
 						funcName := findContainingFunc(instrVA, franges)
 						if funcName != "" {
-							refs[targetVA] = appendUniq(refs[targetVA], funcName)
+							uva := uint64(targetVA)
+							refs[uva] = appendUniq(refs[uva], funcName)
 						}
 					}
 				}
