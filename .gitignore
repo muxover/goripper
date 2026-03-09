@@ -17,6 +17,7 @@ desktop.ini
 *.so
 *.dylib
 dist/
+build/
 
 # Go
 /vendor/

@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.5-pre: CMOVNE plain-blob splitting & register-aware findLengthNearby   -->
 <!-- v0.0.6-pre: Test coverage (8 packages @ 0%), ELF Linux CI, input robustness -->
 <!-- v0.0.7-pre: String dedup, per-type summary counts, pclntab version, filters  -->
+
+## [0.0.5-pre] - 2026-03-09
+
+### Added
+- `SuppressBlobs()` post-extraction pass: fallback blobs (512-byte printable runs) are
+  removed when at least 2 individually-extracted component strings already start inside
+  their byte range, eliminating Go stdlib error-message concatenations from output.
+- `allStdlibRefs()` check in `CrossReference`: when every reference to a fallback blob
+  belongs to a stdlib or runtime function, the blob cap is reduced from 512 to 200 bytes.
+
+### Fixed
+- `findLengthNearby` window widened from 15 instructions forward-only to
+  30 instructions forward + 8 instructions backward, resolving length for
+  patterns where the MOV immediate precedes the LEA in the instruction stream.
+- `findLengthNearby` now rejects MOV instructions targeting extended registers
+  (R8..R15 family), preventing the second string length in a CMOVNE pair from
+  being misattributed to the first LEA.
+- On nullmonitor: plain strings > 100 bytes reduced from 522 to 40 (target was < 50).
 
 ## [0.0.4-pre] - 2026-03-07
 
@@ -113,7 +130,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.3-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.5-pre...HEAD
+[0.0.5-pre]: https://github.com/muxover/goripper/compare/v0.0.4-pre...v0.0.5-pre
+[0.0.4-pre]: https://github.com/muxover/goripper/compare/v0.0.3-pre...v0.0.4-pre
 [0.0.3-pre]: https://github.com/muxover/goripper/compare/v0.0.2-pre...v0.0.3-pre
 [0.0.2-pre]: https://github.com/muxover/goripper/compare/v0.0.1-pre...v0.0.2-pre
 [0.0.1-pre]: https://github.com/muxover/goripper/releases/tag/v0.0.1-pre

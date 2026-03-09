@@ -7,6 +7,62 @@ import (
 	gstrings "github.com/muxover/goripper/internal/strings"
 )
 
+// TestSuppressBlobs_RemovesCoveredBlob verifies that a fallback blob is removed
+// when 2+ non-blob strings start inside its byte range.
+func TestSuppressBlobs_RemovesCoveredBlob(t *testing.T) {
+	blob := gstrings.ExtractedString{Value: "hello world foo bar baz", Offset: 0x1000, IsFallbackBlob: true}
+	comp1 := gstrings.ExtractedString{Value: "world", Offset: 0x1006}  // inside blob
+	comp2 := gstrings.ExtractedString{Value: "foo", Offset: 0x100C}    // inside blob
+	input := []gstrings.ExtractedString{blob, comp1, comp2}
+	result := gstrings.SuppressBlobs(input)
+	for _, s := range result {
+		if s.IsFallbackBlob {
+			t.Error("blob should have been suppressed")
+		}
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 component strings, got %d", len(result))
+	}
+}
+
+// TestSuppressBlobs_KeepsUniqueBlob verifies that a fallback blob is kept when
+// fewer than 2 component strings are inside its range.
+func TestSuppressBlobs_KeepsUniqueBlob(t *testing.T) {
+	blob := gstrings.ExtractedString{Value: "hello world", Offset: 0x2000, IsFallbackBlob: true}
+	comp := gstrings.ExtractedString{Value: "world", Offset: 0x2006} // only 1 inside
+	input := []gstrings.ExtractedString{blob, comp}
+	result := gstrings.SuppressBlobs(input)
+	found := false
+	for _, s := range result {
+		if s.IsFallbackBlob {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("unique blob should be preserved")
+	}
+}
+
+// TestSuppressBlobs_EmptyInput handles the empty case without panic.
+func TestSuppressBlobs_EmptyInput(t *testing.T) {
+	result := gstrings.SuppressBlobs(nil)
+	if result == nil {
+		t.Error("SuppressBlobs(nil) should return non-nil slice")
+	}
+}
+
+// TestSuppressBlobs_NoBlobsPassThrough verifies non-blob strings are unchanged.
+func TestSuppressBlobs_NoBlobsPassThrough(t *testing.T) {
+	strs := []gstrings.ExtractedString{
+		{Value: "alpha", Offset: 0x100},
+		{Value: "beta", Offset: 0x200},
+	}
+	result := gstrings.SuppressBlobs(strs)
+	if len(result) != 2 {
+		t.Errorf("expected 2 strings, got %d", len(result))
+	}
+}
+
 func makeRodata(rodataVA uint64, strings map[uint64]string) []byte {
 	// Find the maximum offset needed
 	maxOff := uint64(256) // minimum size for headers

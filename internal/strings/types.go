@@ -14,8 +14,9 @@ const (
 
 // ExtractedString is a string found in the binary with metadata.
 type ExtractedString struct {
-	Value        string
-	Type         StringType
-	Offset       uint64   // VA of string start
-	ReferencedBy []string // function names that reference this string
+	Value          string
+	Type           StringType
+	Offset         uint64   // VA of string start
+	ReferencedBy   []string // function names that reference this string
+	IsFallbackBlob bool     // true when length was not inferred (512-byte printable run)
 }

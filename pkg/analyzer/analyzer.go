@@ -201,6 +201,7 @@ func (a *Analyzer) extractStrings() error {
 
 	strs = gstrings.Classify(strs)
 	strs = gstrings.SplitConcatenatedURLs(strs)
+	strs = gstrings.SuppressBlobs(strs)
 
 	funcStringMap := make(map[string][]string)
 	for _, s := range strs {

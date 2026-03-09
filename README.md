@@ -10,25 +10,25 @@
 
 **Go binary intelligence framework — extract behavioral insight from compiled Go executables.**
 
-[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#-configuration) • [Project Layout](#-project-layout) • [Contributing](#-contributing) • [License](#-license)
-
 </div>
 
 ---
 
 GoRipper analyzes compiled Go binaries (PE `.exe` and ELF) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.0.2-pre` — string extraction quality fixed, pkgpath classification added, CFG stub guard in place. ELF support and a test suite are coming in `v0.0.3-pre` through `v0.1.0`.
+> **Status:** `v0.0.5-pre` — CMOVNE plain-blob splitting, register-aware length inference, post-extraction blob suppression. ELF symbol fallback and full test coverage coming in `v0.0.6-pre` through `v0.1.0`.
 
 ---
 
-## ✨ Features
+## Features
 
 - **Function Extraction** — Parses `gopclntab` via Go's standard library (`debug/gosym`) to recover all function names, addresses, and sizes for Go 1.2 through 1.24.
 - **Package Classification** — Automatically separates `runtime`, `stdlib`, `user`, and `cgo` packages.
 - **Call Graph** — Disassembles `.text` using x86 instruction decoding to map every `CALL` edge across the binary.
 - **String Extraction** — Scans `.rodata` and cross-references strings to functions via LEA/MOV RIP-relative instruction analysis.
 - **String Classification** — Categorizes strings as URLs, IPs, file paths, secrets, Go package paths, or plain text.
+- **Obfuscation Detection** — Scores each binary for garble/obfuscation (0.0–1.0) using entropy, prefix ratio, string density, and build-info signals.
+- **Stripped Binary Fallback** — Falls back to `.pdata` exception table when gopclntab is absent, generating synthetic `sub_0x<addr>` names.
 - **Type Recovery** — Parses Go runtime `rtype` descriptors to recover struct names, kinds, and field layouts.
 - **Concurrency Detection** — Identifies goroutine spawns, channel operations, and mutex usage via call graph patterns.
 - **Behavior Tagging** — Tags functions with `NETWORK`, `CRYPTO`, `FILE_WRITE`, `FILE_READ`, `EXEC`, `REGISTRY`, `HTTP`, `DNS`, and more.
@@ -37,7 +37,7 @@ GoRipper analyzes compiled Go binaries (PE `.exe` and ELF) without source code. 
 
 ---
 
-## 📦 Installation
+## Installation
 
 **From source (requires Go 1.24+):**
 
@@ -59,7 +59,7 @@ Download from [Releases](https://github.com/muxover/goripper/releases) for `linu
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Full analysis — human-readable report
@@ -101,7 +101,7 @@ Recovered types:      203
 
 ---
 
-## 📋 Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -112,7 +112,7 @@ Recovered types:      203
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Global flags
 
@@ -154,47 +154,46 @@ Recovered types:      203
 
 ---
 
-## 🏗️ Project Layout
+## Project Layout
 
 ```
 goripper/
 ├── cmd/goripper/          # CLI entry point (cobra)
 ├── pkg/analyzer/          # Pipeline orchestrator
-├── internal/
-│   ├── binary/            # PE + ELF binary loaders
-│   ├── gopclntab/         # Go PC-line table parsing (via debug/gosym)
-│   ├── functions/         # Function extraction + runtime/stdlib/user classification
-│   ├── strings/           # .rodata scanner + LEA cross-reference + classifier
-│   ├── callgraph/         # x86 CALL disassembly + edge resolution
-│   ├── cfg/               # Basic block splitting + pseudocode emission
-│   ├── types/             # Go rtype descriptor recovery
-│   ├── concurrency/       # Goroutine/channel pattern detection
-│   ├── behaviors/         # Behavior tag rules (NETWORK, CRYPTO, EXEC, etc.)
-│   └── output/            # JSON + text report writers
-└── pkg/analyzer/          # Pipeline orchestrator
+└── internal/
+    ├── binary/            # PE + ELF binary loaders
+    ├── gopclntab/         # Go PC-line table parsing (via debug/gosym)
+    ├── functions/         # Function extraction + runtime/stdlib/user classification
+    ├── strings/           # .rodata scanner + LEA cross-reference + classifier
+    ├── callgraph/         # x86 CALL disassembly + edge resolution
+    ├── cfg/               # Basic block splitting + pseudocode emission
+    ├── types/             # Go rtype descriptor recovery
+    ├── concurrency/       # Goroutine/channel pattern detection
+    ├── behaviors/         # Behavior tag rules (NETWORK, CRYPTO, EXEC, etc.)
+    ├── obfuscation/       # Garble/obfuscation scoring and relabeling
+    └── output/            # JSON + text report writers
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 📄 License
+## License
 
 Licensed under the [Apache-2.0](LICENSE) license.
 
 ---
 
-## 🔗 Links
+## Links
 
-- **Repository**: https://github.com/muxover/goripper
-- **Issues**: https://github.com/muxover/goripper/issues
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- Repository: https://github.com/muxover/goripper
+- Issues: https://github.com/muxover/goripper/issues
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+
 ---
 
-<div align="center">
-Made with ❤️ by Jax (@muxover)
-</div>
+<p align="center">Made with ❤️ by Jax (@muxover)</p>
