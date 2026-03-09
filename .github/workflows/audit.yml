@@ -5,6 +5,12 @@ on:
     - cron: "0 9 * * 1"  # Every Monday at 09:00 UTC
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "release-notes/**"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
 
 jobs:
   govulncheck:

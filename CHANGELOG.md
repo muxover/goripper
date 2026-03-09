@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `findLengthNearby` now rejects MOV instructions targeting extended registers
   (R8..R15 family), preventing the second string length in a CMOVNE pair from
   being misattributed to the first LEA.
-- On nullmonitor: plain strings > 100 bytes reduced from 522 to 40 (target was < 50).
+- On a real-world test binary: plain strings > 100 bytes reduced from 522 to 40 (target was < 50).
 
 ## [0.0.4-pre] - 2026-03-07
 
