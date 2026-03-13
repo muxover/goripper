@@ -54,12 +54,20 @@ go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
+Or run everything at once via the Makefile:
+
+```bash
+make check   # vet + staticcheck + test
+```
+
 ---
 
 ## Code style
 
 - Run `gofmt` before committing. All code must be `gofmt`-clean.
 - Run `go vet ./...` — must be clean.
+- Run `staticcheck ./...` — must be clean. Install with:
+  `go install honnef.co/go/tools/cmd/staticcheck@latest`
 - No dead code, no commented-out blocks, no debug `fmt.Println` in committed code.
 - New exported types and functions must have godoc comments.
 - Prefer editing existing files over creating new ones.

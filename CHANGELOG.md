@@ -7,8 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.6-pre: Test coverage (8 packages @ 0%), ELF Linux CI, input robustness -->
-<!-- v0.0.7-pre: String dedup, per-type summary counts, pclntab version, filters  -->
+<!-- v0.0.7-pre: String dedup, per-type summary counts, pclntab version, filters -->
+
+## [0.0.6-pre] - 2026-03-13
+
+### Added
+- `safeRun` wrapper in `pkg/analyzer`: every pipeline stage after `loadBinary` now
+  recovers from panics and appends a warning to `AnalysisResult.Warnings` instead of
+  crashing — the pipeline always returns a partial result.
+- Test coverage for 5 previously-zero packages: `internal/binary` (65%),
+  `internal/behaviors` (82%), `internal/concurrency` (91%), `internal/functions` (78%),
+  `internal/output` (74%).
+- `internal/binary/binary_test.go` — 9 PE tests: Open, SectionVA, SectionData,
+  IsPclntabMagic, ScanForPclntab, TextSectionRange, FindGopclntab, metadata, non-binary error.
+- ELF fixture tests (5 tests) using a pre-built `linux/amd64` binary — ELF loader
+  coverage runs on any OS without build tags.
+- `testdata/hello/main.go`: minimal fixture with `net/http` call and URL constant.
+- `testdata/build_elf_fixture.sh`: cross-compiles the fixture to `linux/amd64`.
+- `testdata/fixture_linux_amd64`: pre-built ELF binary committed to the repo.
+- `internal/binary/elf_test.go` (`//go:build linux`): Linux-native integration test.
+- `internal/functions/functions_test.go`: classifier table + extract-on-test-binary (3 tests).
+- `internal/behaviors/behaviors_test.go`: NETWORK, CRYPTO, EXEC, FILE_WRITE, FILE_READ,
+  no-false-positive (6 tests).
+- `internal/output/output_test.go`: sections, warnings, call graph, types, filters,
+  JSON validity, round-trip (8 tests).
+- `internal/concurrency/concurrency_test.go`: goroutine spawn, channel send,
+  no-concurrency (3 tests).
+- `pkg/analyzer/analyzer_test.go`: truncated-binary and zero-byte robustness tests.
+- `Makefile` with `build`, `test`, `vet`, `lint`, and `check` targets.
+- `paths-ignore` on CI and audit workflows — doc-only pushes no longer trigger runs.
+
+### Fixed
+- `staticcheck` S1011 in `cmd/goripper/main.go`: loop-over-append replaced with slice copy.
+- `staticcheck` U1000 in `internal/strings/extractor_test.go`: removed unused `makeRodata`.
 
 ## [0.0.5-pre] - 2026-03-09
 
@@ -130,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.5-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.6-pre...HEAD
+[0.0.6-pre]: https://github.com/muxover/goripper/compare/v0.0.5-pre...v0.0.6-pre
 [0.0.5-pre]: https://github.com/muxover/goripper/compare/v0.0.4-pre...v0.0.5-pre
 [0.0.4-pre]: https://github.com/muxover/goripper/compare/v0.0.3-pre...v0.0.4-pre
 [0.0.3-pre]: https://github.com/muxover/goripper/compare/v0.0.2-pre...v0.0.3-pre

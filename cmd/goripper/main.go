@@ -282,10 +282,7 @@ func filterCallGraph(graph map[string][]string, funcs []output.FunctionOutput) m
 		if !nonRuntime[caller] {
 			continue
 		}
-		var filteredCallees []string
-		for _, callee := range callees {
-			filteredCallees = append(filteredCallees, callee)
-		}
+		filteredCallees := append([]string(nil), callees...)
 		if len(filteredCallees) > 0 {
 			filtered[caller] = filteredCallees
 		}

@@ -63,23 +63,6 @@ func TestSuppressBlobs_NoBlobsPassThrough(t *testing.T) {
 	}
 }
 
-func makeRodata(rodataVA uint64, strings map[uint64]string) []byte {
-	// Find the maximum offset needed
-	maxOff := uint64(256) // minimum size for headers
-	for va, s := range strings {
-		off := va - rodataVA
-		if off+uint64(len(s)) > maxOff {
-			maxOff = off + uint64(len(s)) + 16
-		}
-	}
-	data := make([]byte, maxOff)
-	for va, s := range strings {
-		off := va - rodataVA
-		copy(data[off:], s)
-	}
-	return data
-}
-
 func TestExtract_Empty(t *testing.T) {
 	strs := gstrings.Extract([]byte{}, 0x1000)
 	if len(strs) != 0 {

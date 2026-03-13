@@ -51,12 +51,21 @@ func New(opts Options) *Analyzer {
 }
 
 // Run executes the full analysis pipeline and returns the result.
+// Run executes the full analysis pipeline and returns the result.
+// The load-binary stage is fatal; all subsequent stages are crash-safe —
+// a panic or error appends a warning and pipeline execution continues.
 func (a *Analyzer) Run() (*output.AnalysisResult, error) {
+	if a.opts.Verbose {
+		log.Printf("[*] load binary...")
+	}
+	if err := a.loadBinary(); err != nil {
+		return nil, fmt.Errorf("load binary: %w", err)
+	}
+
 	stages := []struct {
 		name string
 		fn   func() error
 	}{
-		{"load binary", a.loadBinary},
 		{"parse pclntab", a.parsePclntab},
 		{"extract functions", a.extractFunctions},
 		{"extract strings", a.extractStrings},
@@ -72,12 +81,23 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 		if a.opts.Verbose {
 			log.Printf("[*] %s...", stage.name)
 		}
-		if err := stage.fn(); err != nil {
-			return nil, fmt.Errorf("%s: %w", stage.name, err)
+		if err := safeRun(stage.name, stage.fn); err != nil {
+			a.warnings = append(a.warnings, err.Error())
 		}
 	}
 
 	return a.buildOutput(), nil
+}
+
+// safeRun calls fn and converts any panic into an error so a single bad
+// stage cannot crash the entire pipeline.
+func safeRun(stage string, fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("stage %q panicked: %v", stage, r)
+		}
+	}()
+	return fn()
 }
 
 func (a *Analyzer) loadBinary() error {

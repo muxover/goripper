@@ -31,8 +31,18 @@ go.work.sum
 *.key
 credentials.*
 
-# Test binaries
+# Test binaries and coverage
 *.test
+coverage.out
+cov.out
+
+# Testdata — pre-built ELF fixture is tracked; everything else is not
+testdata/fixture_*
+!testdata/fixture_linux_amd64
+
+# Scratch / local analysis artifacts
+nullmonitor
+nullmonitor_analysis.json
 
 # release-notes/ is tracked — do NOT add it here
 
