@@ -155,6 +155,69 @@ func TestTextWriter_NoRuntime(t *testing.T) {
 	}
 }
 
+func TestSummary_PerTypeStringCounts(t *testing.T) {
+	result := makeResult()
+	result.Summary.IPStrings = 3
+	result.Summary.PathStrings = 7
+	result.Summary.SecretStrings = 1
+	result.Summary.PkgPathStrings = 12
+	result.Summary.PlainStrings = 40
+
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{})
+	out := buf.String()
+
+	checks := []string{"3 IPs", "7 paths", "1 secrets", "12 pkg-paths", "40 plain"}
+	for _, want := range checks {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary missing %q", want)
+		}
+	}
+}
+
+func TestBinaryInfo_PclntabShown(t *testing.T) {
+	result := makeResult()
+	result.BinaryInfo.PclntabVersion = "go1.20+"
+	result.BinaryInfo.PclntabMagic = "0xFFFFFFF1"
+
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{})
+	out := buf.String()
+
+	if !strings.Contains(out, "go1.20+") {
+		t.Error("expected pclntab version in output")
+	}
+	if !strings.Contains(out, "0xFFFFFFF1") {
+		t.Error("expected pclntab magic in output")
+	}
+}
+
+func TestTextWriter_ShowRefs(t *testing.T) {
+	result := makeResult()
+	result.Strings = []output.StringOutput{
+		{Value: "https://example.com", Type: "url", ReferencedBy: []string{"main.send", "main.post", "main.log", "main.extra"}},
+	}
+
+	// Without ShowRefs: refs not shown
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{})
+	out := buf.String()
+	if strings.Contains(out, "main.send") {
+		t.Error("refs should not appear without ShowRefs")
+	}
+
+	// With ShowRefs: top 3 shown, overflow indicated
+	buf.Reset()
+	output.WriteText(result, &buf, output.TextOptions{ShowRefs: true})
+	out = buf.String()
+	if !strings.Contains(out, "main.send") {
+		t.Error("expected ref in ShowRefs output")
+	}
+	if !strings.Contains(out, "+1 more") {
+		t.Error("expected overflow indicator for 4 refs")
+	}
+}
+
 func TestJSONWriter_RoundTrip(t *testing.T) {
 	result := makeResult()
 	var buf bytes.Buffer

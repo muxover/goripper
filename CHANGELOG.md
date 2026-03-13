@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.7-pre: String dedup, per-type summary counts, pclntab version, filters -->
+<!-- v0.0.8-pre: TBD -->
+
+## [0.0.7-pre] - 2026-03-13
+
+### Added
+- `Deduplicate()` post-classification pass in `internal/strings`: entries with the
+  same `(Value, Type)` pair are merged — `ReferencedBy` lists are unioned and the
+  lower offset is kept. Result is sorted by offset ascending. Wired into the
+  extraction pipeline after `SuppressBlobs`.
+- Per-type string counts in `SummaryOutput`: `IPStrings`, `PathStrings`,
+  `SecretStrings`, `PkgPathStrings`, `PlainStrings` fields (JSON + text).
+  Summary line now reads:
+  `Strings: N total  (U URLs · I IPs · P paths · S secrets · K pkg-paths · L plain)`
+- `BinaryInfo.PclntabVersion` and `BinaryInfo.PclntabMagic` fields (JSON +
+  text output). Text header shows `Pclntab: version=go1.20+  magic=0xFFFFFFF1`
+  when pclntab was successfully parsed.
+- `--min-len N` flag on `strings` and `analyze`: drop strings shorter than N bytes
+  (post-extraction, independent of the hardcoded extraction minimum of 6).
+- `--no-plain` flag on `strings` and `analyze`: suppress all `plain`-typed strings.
+- `--min-refs N` flag on `strings` and `analyze`: drop strings with fewer than N
+  user-package references in `ReferencedBy`.
+- `--show-refs` flag on `strings` and `analyze`: print up to 3 referencing function
+  names per string in text output, with `(+N more)` overflow indicator.
+- 6 new tests: `TestDeduplicate_MergesReferencedBy`, `TestDeduplicate_PreservesOrder`,
+  `TestDeduplicate_DifferentTypeSameValue`, `TestSummary_PerTypeStringCounts`,
+  `TestBinaryInfo_PclntabShown`, `TestTextWriter_ShowRefs`.
 
 ## [0.0.6-pre] - 2026-03-13
 
@@ -161,7 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.6-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.7-pre...HEAD
+[0.0.7-pre]: https://github.com/muxover/goripper/compare/v0.0.6-pre...v0.0.7-pre
 [0.0.6-pre]: https://github.com/muxover/goripper/compare/v0.0.5-pre...v0.0.6-pre
 [0.0.5-pre]: https://github.com/muxover/goripper/compare/v0.0.4-pre...v0.0.5-pre
 [0.0.4-pre]: https://github.com/muxover/goripper/compare/v0.0.3-pre...v0.0.4-pre

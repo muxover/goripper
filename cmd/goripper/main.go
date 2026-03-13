@@ -58,6 +58,10 @@ func addCommonFlags(cmd *cobra.Command, f *commonFlags) {
 
 func newAnalyzeCmd() *cobra.Command {
 	var flags commonFlags
+	var minLen int
+	var noPlain bool
+	var minRefs int
+	var showRefs bool
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -73,6 +77,9 @@ func newAnalyzeCmd() *cobra.Command {
 				JSONOutput:   flags.jsonOut,
 				CFGEnabled:   flags.cfgMode,
 				TypesEnabled: flags.typeMode,
+				MinStringLen: minLen,
+				NoPlain:      noPlain,
+				MinRefs:      minRefs,
 			}
 
 			result, err := runAnalysis(opts)
@@ -86,6 +93,7 @@ func newAnalyzeCmd() *cobra.Command {
 				ShowCallGraph: false,
 				ShowTypes:     flags.typeMode,
 				ShowPseudo:    flags.cfgMode,
+				ShowRefs:      showRefs,
 			})
 		},
 	}
@@ -93,6 +101,10 @@ func newAnalyzeCmd() *cobra.Command {
 	addCommonFlags(cmd, &flags)
 	cmd.Flags().BoolVar(&flags.cfgMode, "cfg", false, "generate pseudocode for each function (slow)")
 	cmd.Flags().BoolVar(&flags.typeMode, "types", false, "recover Go type information")
+	cmd.Flags().IntVar(&minLen, "min-len", 0, "minimum string length (default 6)")
+	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
+	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
+	cmd.Flags().BoolVar(&showRefs, "show-refs", false, "show referencing functions per string")
 
 	return cmd
 }
@@ -149,6 +161,10 @@ func newFunctionsCmd() *cobra.Command {
 func newStringsCmd() *cobra.Command {
 	var flags commonFlags
 	var strType string
+	var minLen int
+	var noPlain bool
+	var minRefs int
+	var showRefs bool
 
 	cmd := &cobra.Command{
 		Use:   "strings <binary>",
@@ -160,6 +176,9 @@ func newStringsCmd() *cobra.Command {
 				Verbose:      flags.verbose,
 				JSONOutput:   flags.jsonOut,
 				StringFilter: strType,
+				MinStringLen: minLen,
+				NoPlain:      noPlain,
+				MinRefs:      minRefs,
 			}
 
 			result, err := runAnalysis(opts)
@@ -181,12 +200,17 @@ func newStringsCmd() *cobra.Command {
 			return writeOutput(result, flags, output.TextOptions{
 				OnlyStrings:  true,
 				StringFilter: strType,
+				ShowRefs:     showRefs,
 			})
 		},
 	}
 
 	addCommonFlags(cmd, &flags)
 	cmd.Flags().StringVar(&strType, "type", "", "filter string type: url|ip|path|secret")
+	cmd.Flags().IntVar(&minLen, "min-len", 0, "minimum string length (default 6)")
+	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
+	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
+	cmd.Flags().BoolVar(&showRefs, "show-refs", false, "show referencing functions per string")
 
 	return cmd
 }

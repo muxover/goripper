@@ -6,6 +6,8 @@ type BinaryInfo struct {
 	Format                string   `json:"format"`
 	Arch                  string   `json:"arch"`
 	GoVersion             string   `json:"go_version"`
+	PclntabVersion        string   `json:"pclntab_version,omitempty"` // e.g. "go1.20+"
+	PclntabMagic          string   `json:"pclntab_magic,omitempty"`   // e.g. "0xFFFFFFF1"
 	SizeBytes             int64    `json:"size_bytes"`
 	ObfuscationScore      float64  `json:"obfuscation_score"`
 	ObfuscationLevel      string   `json:"obfuscation_level"`
@@ -70,6 +72,11 @@ type SummaryOutput struct {
 	SuspiciousFunctions int      `json:"suspicious_functions"`
 	TotalStrings        int      `json:"total_strings"`
 	URLStrings          int      `json:"url_strings"`
+	IPStrings           int      `json:"ip_strings"`
+	PathStrings         int      `json:"path_strings"`
+	SecretStrings       int      `json:"secret_strings"`
+	PkgPathStrings      int      `json:"pkg_path_strings"`
+	PlainStrings        int      `json:"plain_strings"`
 	RecoveredTypes      int      `json:"recovered_types"`
 	ConcurrentFunctions int      `json:"concurrent_functions"`
 	CgoCallSites        []string `json:"cgo_call_sites,omitempty"`

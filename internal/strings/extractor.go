@@ -10,6 +10,47 @@ import (
 
 const minStringLen = 6
 
+// Deduplicate removes entries with identical (Value, Type) pairs. When two
+// entries share the same value and type, their ReferencedBy lists are merged
+// and a single entry is kept. The result is sorted by Offset ascending.
+func Deduplicate(strs []ExtractedString) []ExtractedString {
+	type key struct {
+		value string
+		typ   StringType
+	}
+	type entry struct {
+		s   ExtractedString
+		idx int
+	}
+	seen := make(map[key]*entry, len(strs))
+	order := make([]*entry, 0, len(strs))
+
+	for _, s := range strs {
+		k := key{s.Value, s.Type}
+		if e, ok := seen[k]; ok {
+			// Merge ReferencedBy, keep lower Offset.
+			for _, fn := range s.ReferencedBy {
+				e.s.ReferencedBy = appendUniq(e.s.ReferencedBy, fn)
+			}
+			if s.Offset < e.s.Offset {
+				e.s.Offset = s.Offset
+			}
+		} else {
+			cp := s
+			e := &entry{s: cp, idx: len(order)}
+			seen[k] = e
+			order = append(order, e)
+		}
+	}
+
+	result := make([]ExtractedString, len(order))
+	for i, e := range order {
+		result[i] = e.s
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Offset < result[j].Offset })
+	return result
+}
+
 // Extract scans rodataData for Go string header pairs (ptr uint64, len uint64)
 // at 8-byte aligned offsets. Only emits strings where ptr points back into
 // .rodata, len is in range [minStringLen, 4096], and all bytes are printable ASCII.

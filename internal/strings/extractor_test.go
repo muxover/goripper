@@ -152,6 +152,59 @@ func TestExtract_Deduplicated(t *testing.T) {
 	}
 }
 
+func TestDeduplicate_MergesReferencedBy(t *testing.T) {
+	strs := []gstrings.ExtractedString{
+		{Value: "hello world", Type: "plain", Offset: 0x1000, ReferencedBy: []string{"main.foo"}},
+		{Value: "hello world", Type: "plain", Offset: 0x1100, ReferencedBy: []string{"main.bar"}},
+		{Value: "unique", Type: "plain", Offset: 0x2000},
+	}
+	result := gstrings.Deduplicate(strs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 strings after dedup, got %d", len(result))
+	}
+	var deduped *gstrings.ExtractedString
+	for i := range result {
+		if result[i].Value == "hello world" {
+			deduped = &result[i]
+		}
+	}
+	if deduped == nil {
+		t.Fatal("deduped string not found")
+	}
+	if len(deduped.ReferencedBy) != 2 {
+		t.Errorf("expected merged ReferencedBy of 2, got %d: %v", len(deduped.ReferencedBy), deduped.ReferencedBy)
+	}
+	// Lower offset should win
+	if deduped.Offset != 0x1000 {
+		t.Errorf("expected lower offset 0x1000, got 0x%x", deduped.Offset)
+	}
+}
+
+func TestDeduplicate_PreservesOrder(t *testing.T) {
+	strs := []gstrings.ExtractedString{
+		{Value: "beta", Type: "plain", Offset: 0x2000},
+		{Value: "alpha", Type: "plain", Offset: 0x1000},
+	}
+	result := gstrings.Deduplicate(strs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 strings, got %d", len(result))
+	}
+	if result[0].Offset >= result[1].Offset {
+		t.Error("result should be sorted by offset ascending")
+	}
+}
+
+func TestDeduplicate_DifferentTypeSameValue(t *testing.T) {
+	strs := []gstrings.ExtractedString{
+		{Value: "same", Type: "plain", Offset: 0x1000},
+		{Value: "same", Type: "url", Offset: 0x2000},
+	}
+	result := gstrings.Deduplicate(strs)
+	if len(result) != 2 {
+		t.Errorf("different types with same value should NOT be merged: got %d", len(result))
+	}
+}
+
 func TestExtract_PtrOutsideRodata(t *testing.T) {
 	const rodataVA = uint64(0x1000)
 	data := make([]byte, 256)

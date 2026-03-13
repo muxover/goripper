@@ -50,6 +50,7 @@ type TextOptions struct {
 	ShowCallGraph bool
 	ShowTypes     bool
 	ShowPseudo    bool
+	ShowRefs      bool   // show top-3 referencing functions per string
 	MaxFunctions  int
 	StringFilter  string // "url", "ip", "path", "secret", or ""
 	CallDepth     int
@@ -61,6 +62,9 @@ func writeBinaryInfo(info BinaryInfo, w io.Writer) {
 	fmt.Fprintf(w, "Format:     %s\n", info.Format)
 	fmt.Fprintf(w, "Arch:       %s\n", info.Arch)
 	fmt.Fprintf(w, "Go Version: %s\n", info.GoVersion)
+	if info.PclntabVersion != "" {
+		fmt.Fprintf(w, "Pclntab:    version=%s  magic=%s\n", info.PclntabVersion, info.PclntabMagic)
+	}
 	fmt.Fprintf(w, "Size:       %d bytes\n", info.SizeBytes)
 	if info.ObfuscationScore > 0 || info.ObfuscationLevel != "" {
 		level := info.ObfuscationLevel
@@ -90,7 +94,9 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 	}
 	fmt.Fprintf(w, "Suspicious:           %d\n", sum.SuspiciousFunctions)
 	fmt.Fprintf(w, "Concurrent:           %d\n", sum.ConcurrentFunctions)
-	fmt.Fprintf(w, "Total strings:        %d (%d URLs)\n", sum.TotalStrings, sum.URLStrings)
+	fmt.Fprintf(w, "Strings:              %d total  (%d URLs · %d IPs · %d paths · %d secrets · %d pkg-paths · %d plain)\n",
+		sum.TotalStrings, sum.URLStrings, sum.IPStrings, sum.PathStrings,
+		sum.SecretStrings, sum.PkgPathStrings, sum.PlainStrings)
 	fmt.Fprintf(w, "Recovered types:      %d\n", sum.RecoveredTypes)
 	if sum.DecryptorStubs > 0 {
 		fmt.Fprintf(w, "Decryptor stubs:      %d  (possible string encryption)\n", sum.DecryptorStubs)
@@ -206,15 +212,20 @@ func writeStrings(strs []StringOutput, w io.Writer, opts TextOptions) {
 		ss := byType[t]
 		fmt.Fprintf(w, "\n[%s]\n", strings.ToUpper(t))
 		for _, s := range ss {
-			refs := ""
-			if len(s.ReferencedBy) > 0 {
-				refs = fmt.Sprintf("  (ref: %s)", strings.Join(s.ReferencedBy, ", "))
-			}
 			val := s.Value
 			if len(val) > 120 {
 				val = val[:117] + "..."
 			}
-			fmt.Fprintf(w, "  %q%s\n", val, refs)
+			fmt.Fprintf(w, "  %q\n", val)
+			if opts.ShowRefs && len(s.ReferencedBy) > 0 {
+				top := s.ReferencedBy
+				suffix := ""
+				if len(top) > 3 {
+					top = top[:3]
+					suffix = fmt.Sprintf(" (+%d more)", len(s.ReferencedBy)-3)
+				}
+				fmt.Fprintf(w, "       └ %s%s\n", strings.Join(top, ", "), suffix)
+			}
 		}
 	}
 	fmt.Fprintln(w)

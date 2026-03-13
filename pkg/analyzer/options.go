@@ -13,4 +13,8 @@ type Options struct {
 	PackageFilter string // filter output to this package name
 	CFGEnabled    bool   // enable CFG + pseudocode generation (slow)
 	TypesEnabled  bool   // enable type recovery
+	MinStringLen  int    // minimum string length filter (0 = use default of 6)
+	NoPlain       bool   // suppress plain-text strings from output
+	MinRefs       int    // minimum user-code reference count (0 = no filter)
+	ShowRefs      bool   // show top-3 referencing functions in text output
 }

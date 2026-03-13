@@ -222,6 +222,52 @@ func (a *Analyzer) extractStrings() error {
 	strs = gstrings.Classify(strs)
 	strs = gstrings.SplitConcatenatedURLs(strs)
 	strs = gstrings.SuppressBlobs(strs)
+	strs = gstrings.Deduplicate(strs)
+
+	// Apply min-length filter if requested.
+	if a.opts.MinStringLen > 0 {
+		filtered := strs[:0]
+		for _, s := range strs {
+			if len(s.Value) >= a.opts.MinStringLen {
+				filtered = append(filtered, s)
+			}
+		}
+		strs = filtered
+	}
+
+	// Apply --no-plain filter.
+	if a.opts.NoPlain {
+		filtered := strs[:0]
+		for _, s := range strs {
+			if s.Type != gstrings.StringTypePlain {
+				filtered = append(filtered, s)
+			}
+		}
+		strs = filtered
+	}
+
+	// Apply --min-refs filter: drop strings with fewer than N user-code refs.
+	if a.opts.MinRefs > 0 {
+		userKind := make(map[string]bool, len(a.funcs))
+		for _, fn := range a.funcs {
+			if fn.PackageKind == functions.PackageUser {
+				userKind[fn.Name] = true
+			}
+		}
+		filtered := strs[:0]
+		for _, s := range strs {
+			count := 0
+			for _, fn := range s.ReferencedBy {
+				if userKind[fn] {
+					count++
+				}
+			}
+			if count >= a.opts.MinRefs {
+				filtered = append(filtered, s)
+			}
+		}
+		strs = filtered
+	}
 
 	funcStringMap := make(map[string][]string)
 	for _, s := range strs {
@@ -360,11 +406,28 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	if goVer == "" && a.pclntab != nil {
 		goVer = a.pclntab.GoVersion
 	}
+	pclntabVer := ""
+	pclntabMagic := ""
+	if a.pclntab != nil {
+		pclntabVer = a.pclntab.Version.String()
+		switch a.pclntab.Version {
+		case gopclntab.Version12:
+			pclntabMagic = "0xFFFFFFFB"
+		case gopclntab.Version116:
+			pclntabMagic = "0xFFFFFFFA"
+		case gopclntab.Version118:
+			pclntabMagic = "0xFFFFFFF0"
+		case gopclntab.Version120:
+			pclntabMagic = "0xFFFFFFF1"
+		}
+	}
 	result.BinaryInfo = output.BinaryInfo{
 		Path:                  a.binary.Path(),
 		Format:                a.binary.Format(),
 		Arch:                  a.binary.Arch(),
 		GoVersion:             goVer,
+		PclntabVersion:        pclntabVer,
+		PclntabMagic:          pclntabMagic,
 		SizeBytes:             a.binary.Size(),
 		ObfuscationScore:      a.obfResult.Score,
 		ObfuscationLevel:      a.obfResult.Level,
@@ -462,8 +525,19 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	}
 	for _, s := range a.strs {
 		sum.TotalStrings++
-		if s.Type == gstrings.StringTypeURL {
+		switch s.Type {
+		case gstrings.StringTypeURL:
 			sum.URLStrings++
+		case gstrings.StringTypeIP:
+			sum.IPStrings++
+		case gstrings.StringTypePath:
+			sum.PathStrings++
+		case gstrings.StringTypeSecret:
+			sum.SecretStrings++
+		case gstrings.StringTypePkgPath:
+			sum.PkgPathStrings++
+		case gstrings.StringTypePlain:
+			sum.PlainStrings++
 		}
 	}
 	result.Summary = sum
