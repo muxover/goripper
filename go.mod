@@ -1,10 +1,10 @@
 module github.com/muxover/goripper
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/arch v0.24.0
+	golang.org/x/arch v0.25.0
 )
 
 require (
