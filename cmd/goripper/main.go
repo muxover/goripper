@@ -29,6 +29,8 @@ intelligence: function names, call graph, strings, type info, and more.`,
 		newFunctionsCmd(),
 		newStringsCmd(),
 		newCallgraphCmd(),
+		newDiffCmd(),
+		newVersionCmd(),
 	)
 
 	return root
@@ -41,6 +43,7 @@ type commonFlags struct {
 	noRuntime bool
 	onlyUser  bool
 	outDir    string
+	outFile   string
 	verbose   bool
 	cfgMode   bool
 	typeMode  bool
@@ -51,6 +54,7 @@ func addCommonFlags(cmd *cobra.Command, f *commonFlags) {
 	cmd.Flags().BoolVar(&f.noRuntime, "no-runtime", false, "exclude runtime functions")
 	cmd.Flags().BoolVar(&f.onlyUser, "only-user", false, "show only user-defined packages")
 	cmd.Flags().StringVar(&f.outDir, "out", "", "output directory (default: stdout)")
+	cmd.Flags().StringVarP(&f.outFile, "output", "o", "", "write output to file instead of stdout")
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "verbose logging")
 }
 
@@ -270,15 +274,18 @@ func runAnalysis(opts analyzer.Options) (*output.AnalysisResult, error) {
 }
 
 func writeOutput(result *output.AnalysisResult, flags commonFlags, textOpts output.TextOptions) error {
-	if flags.jsonOut {
-		if flags.outDir != "" {
-			return output.WriteJSONFile(result, flags.outDir)
-		}
-		return output.WriteJSON(result, os.Stdout)
+	// --out (directory) takes precedence for JSON only (legacy behaviour).
+	if flags.jsonOut && flags.outDir != "" {
+		return output.WriteJSONFile(result, flags.outDir)
 	}
 
-	output.WriteText(result, os.Stdout, textOpts)
-	return nil
+	w, cleanup, err := resolveWriter(flags.outFile)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return writeOutputTo(result, w, flags, textOpts)
 }
 
 func filterByPackage(result *output.AnalysisResult, pkg string) *output.AnalysisResult {

@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.8-pre: TBD -->
+<!-- v0.0.9-pre: --jsonl streaming, --max-functions, shell completion, --quiet -->
+
+## [0.0.8-pre] - 2026-03-26
+
+### Added
+- `goripper diff <binary1> <binary2> [--json] [-o <file>]` subcommand: compares two Go
+  binaries and reports added/removed/modified functions, new strings, and new behavior tags.
+  New `internal/diff` package with `Compare(a, b *AnalysisResult) *Result` and 5 unit tests.
+- `goripper version` subcommand: prints version, Go toolchain, OS/arch, commit, and build
+  date. New `internal/version` package; vars injected at release time via ldflags.
+- `-o / --output <file>` flag on all subcommands (`analyze`, `functions`, `strings`,
+  `callgraph`, `diff`): write output to a file instead of stdout; path is printed to
+  stderr so the terminal is not silent.
 
 ## [0.0.7-pre] - 2026-03-13
 
@@ -186,7 +198,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.7-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.8-pre...HEAD
+[0.0.8-pre]: https://github.com/muxover/goripper/compare/v0.0.7-pre...v0.0.8-pre
 [0.0.7-pre]: https://github.com/muxover/goripper/compare/v0.0.6-pre...v0.0.7-pre
 [0.0.6-pre]: https://github.com/muxover/goripper/compare/v0.0.5-pre...v0.0.6-pre
 [0.0.5-pre]: https://github.com/muxover/goripper/compare/v0.0.4-pre...v0.0.5-pre
