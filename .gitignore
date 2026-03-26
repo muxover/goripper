@@ -40,9 +40,8 @@ cov.out
 testdata/fixture_*
 !testdata/fixture_linux_amd64
 
-# Scratch / local analysis artifacts
-nullmonitor
-nullmonitor_analysis.json
+# Local testing artifacts — put personal tool names in .git/info/exclude instead
+testing-artifacts/
 
 # release-notes/ is tracked — do NOT add it here
 
