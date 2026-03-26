@@ -19,7 +19,7 @@ What you expected to happen.
 - OS:
 - Architecture:
 - Go version (`go version`):
-- GoRipper version (`goripper --version`):
+- GoRipper version (`goripper version`):
 - Binary format analyzed (PE/ELF):
 
 **Additional context**

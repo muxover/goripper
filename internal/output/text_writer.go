@@ -9,7 +9,7 @@ import (
 
 // WriteText writes a human-readable analysis report to w.
 func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
-	// Warnings first so the analyst sees them immediately.
+	// Warnings always shown — they signal pipeline failures.
 	if len(result.Warnings) > 0 {
 		for _, warn := range result.Warnings {
 			fmt.Fprintf(w, "WARNING: %s\n", warn)
@@ -17,14 +17,16 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 		fmt.Fprintln(w)
 	}
 
-	writeBinaryInfo(result.BinaryInfo, w)
-	writeSummary(result.Summary, w)
+	if !opts.Quiet {
+		writeBinaryInfo(result.BinaryInfo, w)
+		writeSummary(result.Summary, w)
 
-	if len(result.DecryptorStubs) > 0 {
-		writeDecryptorStubs(result.DecryptorStubs, w)
-	}
-	if len(result.Summary.CgoCallSites) > 0 {
-		writeCGoBoundaries(result.Summary.CgoCallSites, w)
+		if len(result.DecryptorStubs) > 0 {
+			writeDecryptorStubs(result.DecryptorStubs, w)
+		}
+		if len(result.Summary.CgoCallSites) > 0 {
+			writeCGoBoundaries(result.Summary.CgoCallSites, w)
+		}
 	}
 
 	if !opts.OnlyStrings {
@@ -37,7 +39,7 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 		writeCallGraph(result.CallGraph, w, opts)
 	}
 	if opts.ShowTypes && len(result.Types) > 0 {
-		writeTypes(result.Types, w)
+		writeTypes(result.Types, w, opts)
 	}
 }
 
@@ -51,7 +53,8 @@ type TextOptions struct {
 	ShowTypes     bool
 	ShowPseudo    bool
 	ShowRefs      bool   // show top-3 referencing functions per string
-	MaxFunctions  int
+	Quiet         bool   // suppress headers/banners; emit data rows only
+	MaxFunctions  int    // cap function list at N; 0 = unlimited
 	StringFilter  string // "url", "ip", "path", "secret", or ""
 	CallDepth     int
 }
@@ -132,7 +135,14 @@ func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
 		return
 	}
 
-	fmt.Fprintf(w, "=== Functions (%d) ===\n", len(filtered))
+	total := len(filtered)
+	if opts.MaxFunctions > 0 && len(filtered) > opts.MaxFunctions {
+		filtered = filtered[:opts.MaxFunctions]
+	}
+
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Functions (%d) ===\n", total)
+	}
 
 	byPkg := make(map[string][]FunctionOutput)
 	var pkgs []string
@@ -146,7 +156,9 @@ func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
 
 	for _, pkg := range pkgs {
 		fns := byPkg[pkg]
-		fmt.Fprintf(w, "\n[%s]\n", pkg)
+		if !opts.Quiet {
+			fmt.Fprintf(w, "\n[%s]\n", pkg)
+		}
 		for _, f := range fns {
 			tags := ""
 			if len(f.Tags) > 0 {
@@ -173,6 +185,10 @@ func writeFunctions(funcs []FunctionOutput, w io.Writer, opts TextOptions) {
 			}
 		}
 	}
+
+	if opts.MaxFunctions > 0 && total > opts.MaxFunctions {
+		fmt.Fprintf(w, "... and %d more functions (use --max-functions 0 for full list)\n", total-opts.MaxFunctions)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -196,7 +212,9 @@ func writeStrings(strs []StringOutput, w io.Writer, opts TextOptions) {
 		return
 	}
 
-	fmt.Fprintf(w, "=== Strings (%d) ===\n", len(filtered))
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Strings (%d) ===\n", len(filtered))
+	}
 
 	byType := make(map[string][]StringOutput)
 	var types []string
@@ -210,7 +228,9 @@ func writeStrings(strs []StringOutput, w io.Writer, opts TextOptions) {
 
 	for _, t := range types {
 		ss := byType[t]
-		fmt.Fprintf(w, "\n[%s]\n", strings.ToUpper(t))
+		if !opts.Quiet {
+			fmt.Fprintf(w, "\n[%s]\n", strings.ToUpper(t))
+		}
 		for _, s := range ss {
 			val := s.Value
 			if len(val) > 120 {
@@ -249,7 +269,9 @@ func writeCallGraph(graph map[string][]string, w io.Writer, opts TextOptions) {
 		return
 	}
 
-	fmt.Fprintf(w, "=== Call Graph ===\n")
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Call Graph ===\n")
+	}
 
 	callers := make([]string, 0, len(graph))
 	for caller := range graph {
@@ -271,8 +293,10 @@ func writeCallGraph(graph map[string][]string, w io.Writer, opts TextOptions) {
 	fmt.Fprintln(w)
 }
 
-func writeTypes(types []TypeOutput, w io.Writer) {
-	fmt.Fprintf(w, "=== Recovered Types (%d) ===\n", len(types))
+func writeTypes(types []TypeOutput, w io.Writer, opts TextOptions) {
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Recovered Types (%d) ===\n", len(types))
+	}
 	for _, t := range types {
 		fmt.Fprintf(w, "\ntype %s %s", t.Name, t.Kind)
 		if t.Kind == "struct" && len(t.Fields) > 0 {

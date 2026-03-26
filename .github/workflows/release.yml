@@ -50,7 +50,14 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          go build -ldflags="-s -w" \
+          VERSION="${{ github.ref_name }}"
+          COMMIT="${{ github.sha }}"
+          DATE="$(date -u +%Y-%m-%d)"
+          go build \
+            -ldflags="-s -w \
+              -X github.com/muxover/goripper/internal/version.Version=${VERSION} \
+              -X github.com/muxover/goripper/internal/version.Commit=${COMMIT} \
+              -X github.com/muxover/goripper/internal/version.Date=${DATE}" \
             -o goripper-${{ matrix.suffix }}${{ matrix.ext || '' }} \
             ./cmd/goripper/
 

@@ -218,6 +218,41 @@ func TestTextWriter_ShowRefs(t *testing.T) {
 	}
 }
 
+func TestTextWriter_MaxFunctions_Truncates(t *testing.T) {
+	result := makeResult() // 2 functions
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{MaxFunctions: 1})
+	out := buf.String()
+
+	if !strings.Contains(out, "... and 1 more functions") {
+		t.Errorf("expected truncation message, got:\n%s", out)
+	}
+}
+
+func TestTextWriter_MaxFunctions_NoTruncateWhenUnderLimit(t *testing.T) {
+	result := makeResult() // 2 functions
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{MaxFunctions: 10})
+	out := buf.String()
+
+	if strings.Contains(out, "more functions") {
+		t.Errorf("should not truncate when count < limit, got:\n%s", out)
+	}
+}
+
+func TestTextWriter_Quiet_NoHeaders(t *testing.T) {
+	result := makeResult()
+	var buf bytes.Buffer
+	output.WriteText(result, &buf, output.TextOptions{Quiet: true})
+	out := buf.String()
+
+	for _, header := range []string{"=== GoRipper", "=== Summary", "=== Functions", "=== Strings"} {
+		if strings.Contains(out, header) {
+			t.Errorf("quiet mode should suppress header %q", header)
+		}
+	}
+}
+
 func TestJSONWriter_RoundTrip(t *testing.T) {
 	result := makeResult()
 	var buf bytes.Buffer

@@ -15,19 +15,33 @@ import (
 func newDiffCmd() *cobra.Command {
 	var jsonOut bool
 	var outFile string
+	var noRuntime bool
+	var onlyUser bool
 
 	cmd := &cobra.Command{
 		Use:   "diff <binary1> <binary2>",
 		Short: "Compare two Go binaries and report what changed",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := runAnalysis(analyzer.Options{BinaryPath: args[0]})
+			aOpts := analyzer.Options{BinaryPath: args[0], NoRuntime: noRuntime, OnlyUser: onlyUser}
+			bOpts := analyzer.Options{BinaryPath: args[1], NoRuntime: noRuntime, OnlyUser: onlyUser}
+
+			a, err := runAnalysis(aOpts)
 			if err != nil {
 				return fmt.Errorf("analyzing %s: %w", args[0], err)
 			}
-			b, err := runAnalysis(analyzer.Options{BinaryPath: args[1]})
+			b, err := runAnalysis(bOpts)
 			if err != nil {
 				return fmt.Errorf("analyzing %s: %w", args[1], err)
+			}
+
+			if noRuntime {
+				a.Functions = filterNonRuntime(a.Functions)
+				b.Functions = filterNonRuntime(b.Functions)
+			}
+			if onlyUser {
+				a.Functions = filterUserOnly(a.Functions)
+				b.Functions = filterUserOnly(b.Functions)
 			}
 
 			result := diff.Compare(a, b)
@@ -48,7 +62,29 @@ func newDiffCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	cmd.Flags().StringVarP(&outFile, "output", "o", "", "write output to file instead of stdout")
+	cmd.Flags().BoolVar(&noRuntime, "no-runtime", false, "exclude runtime functions from diff")
+	cmd.Flags().BoolVar(&onlyUser, "only-user", false, "diff only user-written package functions")
 	return cmd
+}
+
+func filterNonRuntime(funcs []output.FunctionOutput) []output.FunctionOutput {
+	out := funcs[:0:0]
+	for _, f := range funcs {
+		if !f.IsRuntime && f.PackageKind != "runtime" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func filterUserOnly(funcs []output.FunctionOutput) []output.FunctionOutput {
+	out := funcs[:0:0]
+	for _, f := range funcs {
+		if f.PackageKind == "user" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func writeDiffJSON(result *diff.Result, w io.Writer) error {

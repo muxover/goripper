@@ -9,6 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// quietFlag is a persistent root flag inherited by all subcommands.
+var quietFlag bool
+
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -24,14 +27,24 @@ func newRootCmd() *cobra.Command {
 intelligence: function names, call graph, strings, type info, and more.`,
 	}
 
+	root.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, "suppress headers and decorative output; emit data rows only")
+
+	analyzeCmd := newAnalyzeCmd()
+	functionsCmd := newFunctionsCmd()
+	stringsCmd := newStringsCmd()
+	callgraphCmd := newCallgraphCmd()
+	diffCmd := newDiffCmd()
+
 	root.AddCommand(
-		newAnalyzeCmd(),
-		newFunctionsCmd(),
-		newStringsCmd(),
-		newCallgraphCmd(),
-		newDiffCmd(),
+		analyzeCmd,
+		functionsCmd,
+		stringsCmd,
+		callgraphCmd,
+		diffCmd,
 		newVersionCmd(),
 	)
+
+	registerCompletions(analyzeCmd, functionsCmd, stringsCmd, callgraphCmd, diffCmd)
 
 	return root
 }
@@ -42,7 +55,6 @@ type commonFlags struct {
 	jsonOut   bool
 	noRuntime bool
 	onlyUser  bool
-	outDir    string
 	outFile   string
 	verbose   bool
 	cfgMode   bool
@@ -53,7 +65,6 @@ func addCommonFlags(cmd *cobra.Command, f *commonFlags) {
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, "output as JSON")
 	cmd.Flags().BoolVar(&f.noRuntime, "no-runtime", false, "exclude runtime functions")
 	cmd.Flags().BoolVar(&f.onlyUser, "only-user", false, "show only user-defined packages")
-	cmd.Flags().StringVar(&f.outDir, "out", "", "output directory (default: stdout)")
 	cmd.Flags().StringVarP(&f.outFile, "output", "o", "", "write output to file instead of stdout")
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "verbose logging")
 }
@@ -66,6 +77,8 @@ func newAnalyzeCmd() *cobra.Command {
 	var noPlain bool
 	var minRefs int
 	var showRefs bool
+	var jsonlOut bool
+	var maxFunctions int
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -76,7 +89,7 @@ func newAnalyzeCmd() *cobra.Command {
 				BinaryPath:   args[0],
 				NoRuntime:    flags.noRuntime,
 				OnlyUser:     flags.onlyUser,
-				OutputDir:    flags.outDir,
+	
 				Verbose:      flags.verbose,
 				JSONOutput:   flags.jsonOut,
 				CFGEnabled:   flags.cfgMode,
@@ -91,13 +104,23 @@ func newAnalyzeCmd() *cobra.Command {
 				return err
 			}
 
+			if jsonlOut {
+				w, cleanup, err := resolveWriter(flags.outFile)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				return output.WriteJSONL(w, result)
+			}
+
 			return writeOutput(result, flags, output.TextOptions{
-				NoRuntime:     flags.noRuntime,
-				OnlyUser:      flags.onlyUser,
-				ShowCallGraph: false,
-				ShowTypes:     flags.typeMode,
-				ShowPseudo:    flags.cfgMode,
-				ShowRefs:      showRefs,
+				NoRuntime:    flags.noRuntime,
+				OnlyUser:     flags.onlyUser,
+				ShowTypes:    flags.typeMode,
+				ShowPseudo:   flags.cfgMode,
+				ShowRefs:     showRefs,
+				Quiet:        quietFlag,
+				MaxFunctions: maxFunctions,
 			})
 		},
 	}
@@ -109,6 +132,9 @@ func newAnalyzeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
 	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
 	cmd.Flags().BoolVar(&showRefs, "show-refs", false, "show referencing functions per string")
+	cmd.Flags().BoolVar(&jsonlOut, "jsonl", false, "output as newline-delimited JSON (JSONL)")
+	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
+	cmd.MarkFlagsMutuallyExclusive("json", "jsonl")
 
 	return cmd
 }
@@ -118,6 +144,7 @@ func newAnalyzeCmd() *cobra.Command {
 func newFunctionsCmd() *cobra.Command {
 	var flags commonFlags
 	var pkgFilter string
+	var maxFunctions int
 
 	cmd := &cobra.Command{
 		Use:   "functions <binary>",
@@ -139,7 +166,6 @@ func newFunctionsCmd() *cobra.Command {
 				return err
 			}
 
-			// Filter by package if specified
 			if pkgFilter != "" {
 				result = filterByPackage(result, pkgFilter)
 			}
@@ -149,6 +175,8 @@ func newFunctionsCmd() *cobra.Command {
 				OnlyUser:      flags.onlyUser,
 				OnlyFunctions: true,
 				ShowPseudo:    flags.cfgMode,
+				Quiet:         quietFlag,
+				MaxFunctions:  maxFunctions,
 			})
 		},
 	}
@@ -156,6 +184,7 @@ func newFunctionsCmd() *cobra.Command {
 	addCommonFlags(cmd, &flags)
 	cmd.Flags().StringVar(&pkgFilter, "pkg", "", "filter to specific package name")
 	cmd.Flags().BoolVar(&flags.cfgMode, "cfg", false, "generate pseudocode")
+	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
 
 	return cmd
 }
@@ -190,7 +219,6 @@ func newStringsCmd() *cobra.Command {
 				return err
 			}
 
-			// Filter strings by type
 			if strType != "" {
 				filtered := make([]output.StringOutput, 0)
 				for _, s := range result.Strings {
@@ -205,12 +233,13 @@ func newStringsCmd() *cobra.Command {
 				OnlyStrings:  true,
 				StringFilter: strType,
 				ShowRefs:     showRefs,
+				Quiet:        quietFlag,
 			})
 		},
 	}
 
 	addCommonFlags(cmd, &flags)
-	cmd.Flags().StringVar(&strType, "type", "", "filter string type: url|ip|path|secret")
+	cmd.Flags().StringVar(&strType, "type", "", "filter string type: url|ip|path|secret|pkgpath")
 	cmd.Flags().IntVar(&minLen, "min-len", 0, "minimum string length (default 6)")
 	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
 	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
@@ -243,7 +272,6 @@ func newCallgraphCmd() *cobra.Command {
 				return err
 			}
 
-			// Filter call graph if no-runtime
 			if flags.noRuntime {
 				result.CallGraph = filterCallGraph(result.CallGraph, result.Functions)
 			}
@@ -252,6 +280,7 @@ func newCallgraphCmd() *cobra.Command {
 				NoRuntime:     flags.noRuntime,
 				OnlyFunctions: true,
 				ShowCallGraph: true,
+				Quiet:         quietFlag,
 			})
 		},
 	}
@@ -274,11 +303,6 @@ func runAnalysis(opts analyzer.Options) (*output.AnalysisResult, error) {
 }
 
 func writeOutput(result *output.AnalysisResult, flags commonFlags, textOpts output.TextOptions) error {
-	// --out (directory) takes precedence for JSON only (legacy behaviour).
-	if flags.jsonOut && flags.outDir != "" {
-		return output.WriteJSONFile(result, flags.outDir)
-	}
-
 	w, cleanup, err := resolveWriter(flags.outFile)
 	if err != nil {
 		return err
@@ -300,7 +324,6 @@ func filterByPackage(result *output.AnalysisResult, pkg string) *output.Analysis
 }
 
 func filterCallGraph(graph map[string][]string, funcs []output.FunctionOutput) map[string][]string {
-	// Build set of non-runtime function names
 	nonRuntime := make(map[string]bool)
 	for _, f := range funcs {
 		if !f.IsRuntime {

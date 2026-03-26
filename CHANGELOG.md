@@ -7,7 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.0.9-pre: --jsonl streaming, --max-functions, shell completion, --quiet -->
+<!-- v0.1.0: README overhaul, docs/architecture.md, goreleaser + release binaries -->
+
+## [0.0.9-pre] - 2026-03-26
+
+### Added
+- `--jsonl` flag on `analyze`: emits newline-delimited JSON (JSONL/ndjson), one object
+  per line with a `"type"` discriminator — `binary_info`, `function`, `string`,
+  `behavior`, `summary` (always last). Mutually exclusive with `--json`.
+  New `internal/output/jsonl_writer.go` with 4 unit tests.
+- `--max-functions N` flag on `analyze` and `functions`: caps the function list at N
+  entries and appends `... and N more functions (use --max-functions 0 for full list)`.
+  Default 0 = unlimited (backward compatible).
+- `-q` / `--quiet` persistent flag on the root command (inherited by all subcommands):
+  suppresses `===` section headers, grouping lines, binary info block, and summary
+  block — emits data rows only. Useful for scripting and grep pipelines.
+- Shell completion via cobra's built-in `completion` subcommand (`bash`, `zsh`, `fish`,
+  `powershell`). Custom `ValidArgsFunction` for binary path args and
+  `RegisterFlagCompletionFunc` for `--type` on `strings`. New `completion.go` (~35 lines).
+- 3 new tests: `TestTextWriter_MaxFunctions_Truncates`,
+  `TestTextWriter_MaxFunctions_NoTruncateWhenUnderLimit`, `TestTextWriter_Quiet_NoHeaders`.
+
+### Fixed
+- README fully rewritten: status reflects v0.0.9-pre, all commands documented (including
+  `diff`, `version`, `completion`), all flags accurate, shell completion section added,
+  limitations section added, `--depth` default corrected to `0` (was wrongly listed as `3`).
+- `goripper diff` now accepts `--no-runtime` and `--only-user` flags — without these,
+  comparing binaries built with different Go toolchains would produce thousands of
+  spurious runtime function diffs.
+- `--out <dir>` legacy flag removed from all subcommands; `-o / --output <file>` is the
+  only output-redirection flag.
+- `release.yml` now injects version, commit, and build date via `-ldflags -X` so
+  `goripper version` shows real values in released binaries instead of `v0.0.0-dev`.
 
 ## [0.0.8-pre] - 2026-03-26
 
@@ -198,7 +229,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.8-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.9-pre...HEAD
+[0.0.9-pre]: https://github.com/muxover/goripper/compare/v0.0.8-pre...v0.0.9-pre
 [0.0.8-pre]: https://github.com/muxover/goripper/compare/v0.0.7-pre...v0.0.8-pre
 [0.0.7-pre]: https://github.com/muxover/goripper/compare/v0.0.6-pre...v0.0.7-pre
 [0.0.6-pre]: https://github.com/muxover/goripper/compare/v0.0.5-pre...v0.0.6-pre

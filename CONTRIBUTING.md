@@ -96,6 +96,6 @@ Open an issue at https://github.com/muxover/goripper/issues. Include:
 
 - OS and architecture (e.g. `Windows 11 amd64`, `Ubuntu 22.04 amd64`)
 - Go version (`go version`)
-- GoRipper version (`goripper --version`)
+- GoRipper version (`goripper version`)
 - The binary you were analyzing (or a minimal reproducer)
 - Full error message and command you ran
