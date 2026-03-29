@@ -281,13 +281,21 @@ func writeCallGraph(graph map[string][]string, w io.Writer, opts TextOptions) {
 
 	for _, caller := range callers {
 		callees := graph[caller]
+		truncated := 0
+		if opts.CallDepth > 0 && len(callees) > opts.CallDepth {
+			truncated = len(callees) - opts.CallDepth
+			callees = callees[:opts.CallDepth]
+		}
 		fmt.Fprintf(w, "\n%s\n", caller)
 		for i, callee := range callees {
-			if i == len(callees)-1 {
+			if i == len(callees)-1 && truncated == 0 {
 				fmt.Fprintf(w, "  └── %s\n", callee)
 			} else {
 				fmt.Fprintf(w, "  ├── %s\n", callee)
 			}
+		}
+		if truncated > 0 {
+			fmt.Fprintf(w, "  └── ... and %d more\n", truncated)
 		}
 	}
 	fmt.Fprintln(w)

@@ -180,12 +180,6 @@ func scanForTypeNames(data []byte, baseVA uint64, order binary.ByteOrder, ptrSiz
 	var types []RecoveredType
 	seen := make(map[string]bool)
 
-	// Look for "type:" or "go:type." markers
-	patterns := []string{"type.", "*"}
-	for _, pat := range patterns {
-		_ = pat
-	}
-
 	// Simple scan: look for null-terminated strings that look like type names
 	// and are followed by rtype-sized alignment
 	i := 0

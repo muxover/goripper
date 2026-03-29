@@ -51,7 +51,6 @@ func New(opts Options) *Analyzer {
 }
 
 // Run executes the full analysis pipeline and returns the result.
-// Run executes the full analysis pipeline and returns the result.
 // The load-binary stage is fatal; all subsequent stages are crash-safe —
 // a panic or error appends a warning and pipeline execution continues.
 func (a *Analyzer) Run() (*output.AnalysisResult, error) {

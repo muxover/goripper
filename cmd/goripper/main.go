@@ -281,6 +281,7 @@ func newCallgraphCmd() *cobra.Command {
 				OnlyFunctions: true,
 				ShowCallGraph: true,
 				Quiet:         quietFlag,
+				CallDepth:     depth,
 			})
 		},
 	}

@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- v0.1.0: README overhaul, docs/architecture.md, goreleaser + release binaries -->
+## [0.1.0] - 2026-03-29
+
+### Added
+- `callgraph --depth N` now limits callee count per node and appends a trailing
+  `... and N more` line. The flag was accepted since v0.0.1-pre but had no effect.
+- `docs/architecture.md`: pipeline flowchart, per-package table, data flow diagram,
+  string extraction internals, how-to guides for adding stages and behavior tags.
+- Cross-platform prebuilt binaries via GitHub Actions release pipeline:
+  `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`.
+  Each release includes `checksums.txt` (SHA-256).
+
+### Fixed
+- Dead code removed from `internal/types/recovery.go`: unused `patterns` loop that
+  iterated over a slice and discarded every element.
+- Duplicate `Run` doc comment removed from `pkg/analyzer/analyzer.go`.
+- README status updated to `v0.1.0`; references to `v0.0.9-pre` and "coming in v0.1.0"
+  removed.
+- `.claude/` added to `.gitignore`.
 
 ## [0.0.9-pre] - 2026-03-26
 
@@ -229,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.0.9-pre...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/muxover/goripper/compare/v0.0.9-pre...v0.1.0
 [0.0.9-pre]: https://github.com/muxover/goripper/compare/v0.0.8-pre...v0.0.9-pre
 [0.0.8-pre]: https://github.com/muxover/goripper/compare/v0.0.7-pre...v0.0.8-pre
 [0.0.7-pre]: https://github.com/muxover/goripper/compare/v0.0.6-pre...v0.0.7-pre

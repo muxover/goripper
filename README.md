@@ -16,7 +16,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe` and ELF) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.0.9-pre` — `--jsonl` streaming output, `--max-functions`, `--quiet`, shell completion. Binary diffing and `goripper version` shipped in `v0.0.8-pre`. Full stable release with goreleaser and ARM64 support coming in `v0.1.0`+.
+> **Status:** `v0.1.0` — first stable release. PE and ELF support, full analysis pipeline, binary diffing, JSONL streaming, shell completion, and cross-platform release binaries. ARM64 and Mach-O support planned for `v0.2.0`.
 
 ---
 
