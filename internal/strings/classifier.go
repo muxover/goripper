@@ -23,17 +23,14 @@ var (
 	reSecret = regexp.MustCompile(
 		`(?i)(password|passwd|secret|token|api[_-]?key|auth[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret)`,
 	)
-	// Partial URL patterns for strings that look like endpoints but without scheme
 	reEndpoint = regexp.MustCompile(
 		`(?i)^/[a-zA-Z0-9/_\-]{3,}(\?[^\s]*)?$`,
 	)
-	// Go module/import paths: e.g. golang.org/x/crypto, github.com/user/repo
 	rePkgPath = regexp.MustCompile(
 		`^[a-z0-9]([a-z0-9\-]*\.)+[a-z]{2,}/[a-zA-Z0-9/_.\-]+$`,
 	)
 )
 
-// Classify assigns a StringType to each extracted string based on content patterns.
 func Classify(strs []ExtractedString) []ExtractedString {
 	result := make([]ExtractedString, len(strs))
 	for i, s := range strs {
@@ -65,7 +62,6 @@ func classifyOne(v string) StringType {
 		return StringTypePath
 	}
 
-	// API endpoint-like paths
 	if reEndpoint.MatchString(trimmed) {
 		return StringTypePath
 	}
@@ -77,14 +73,8 @@ func classifyOne(v string) StringType {
 	return StringTypePlain
 }
 
-// SplitConcatenatedURLs breaks apart any URL-typed string that contains multiple
-// embedded URL starts (e.g. "https://a.com/...https://b.com/..."). This handles the
-// CMOVNE compiler pattern where adjacent .rodata strings have no separator and our
-// length inference falls back to a 512-byte printable run.
-//
-// Only strings that start with "https?://" and contain at least one additional
-// "https?://" are split. Non-URL strings and strings with a single URL are returned
-// unchanged. The original blob is replaced by its individual components.
+// SplitConcatenatedURLs splits blobs that contain multiple URLs — happens when CMOVNE
+// adjacent .rodata strings have no separator and length inference falls back to 512 bytes.
 func SplitConcatenatedURLs(strs []ExtractedString) []ExtractedString {
 	seen := make(map[string]bool, len(strs))
 	for _, s := range strs {

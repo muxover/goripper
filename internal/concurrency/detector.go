@@ -7,7 +7,6 @@ import (
 	"github.com/muxover/goripper/internal/functions"
 )
 
-// concurrencyTargets maps callee name prefixes/exact names to pattern kinds.
 var concurrencyTargets = []struct {
 	prefix  string
 	exact   bool
@@ -30,12 +29,8 @@ var concurrencyTargets = []struct {
 	{"runtime/internal/atomic.", false, PatternAtomicOp},
 }
 
-// Detect scans the call graph for concurrency patterns and annotates functions.
-// Returns the detected patterns and the updated function list.
 func Detect(graph *callgraph.CallGraph, funcs []functions.Function) ([]ConcurrencyPattern, []functions.Function) {
 	var patterns []ConcurrencyPattern
-
-	// Build a set of concurrent function names
 	concurrentFuncs := make(map[string]bool)
 
 	for _, edge := range graph.Edges {
@@ -55,7 +50,6 @@ func Detect(graph *callgraph.CallGraph, funcs []functions.Function) ([]Concurren
 		concurrentFuncs[edge.Caller] = true
 	}
 
-	// Annotate functions
 	result := make([]functions.Function, len(funcs))
 	for i, f := range funcs {
 		f.IsConcurrent = concurrentFuncs[f.Name]

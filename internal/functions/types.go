@@ -34,7 +34,6 @@ const (
 	SourceSynthetic   FunctionSource = "synthetic"     // generated name: sub_0x<addr>
 )
 
-// Function represents a parsed and classified function from a Go binary.
 type Function struct {
 	Name         string
 	Addr         uint64

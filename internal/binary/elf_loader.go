@@ -7,11 +7,11 @@ import (
 	"os"
 )
 
-// ELFBinary implements Binary for Linux ELF files.
 type ELFBinary struct {
 	file      *elf.File
 	path      string
 	size      int64
+	arch      string
 	goVersion string
 }
 
@@ -27,9 +27,22 @@ func openELF(path string) (*ELFBinary, error) {
 		return nil, err
 	}
 
-	b := &ELFBinary{file: f, path: path, size: info.Size()}
+	b := &ELFBinary{file: f, path: path, size: info.Size(), arch: elfArch(f)}
 	b.goVersion = b.detectGoVersion()
 	return b, nil
+}
+
+func elfArch(f *elf.File) string {
+	switch f.Machine {
+	case elf.EM_AARCH64:
+		return "arm64"
+	case elf.EM_ARM:
+		return "arm"
+	case elf.EM_386:
+		return "x86"
+	default:
+		return "x86_64"
+	}
 }
 
 func (b *ELFBinary) detectGoVersion() string {
@@ -41,7 +54,6 @@ func (b *ELFBinary) detectGoVersion() string {
 }
 
 func (b *ELFBinary) Section(name string) ([]byte, error) {
-	// ELF uses .rodata, PE uses .rdata — handle both names
 	s := b.file.Section(name)
 	if s == nil {
 		return nil, fmt.Errorf("section %q not found", name)
@@ -70,7 +82,7 @@ func (b *ELFBinary) TextSectionRange() (uint64, uint64, error) {
 }
 
 func (b *ELFBinary) ImageBase() uint64 {
-	// For PIE ELF binaries the load address is 0; for non-PIE it's the min PT_LOAD addr.
+	// PIE ELF has load address 0; non-PIE reports the min PT_LOAD vaddr.
 	for _, prog := range b.file.Progs {
 		if prog.Type == elf.PT_LOAD && prog.Flags&elf.PF_X != 0 {
 			return prog.Vaddr - prog.Off
@@ -81,12 +93,11 @@ func (b *ELFBinary) ImageBase() uint64 {
 
 func (b *ELFBinary) GoVersion() string { return b.goVersion }
 func (b *ELFBinary) Format() string    { return "ELF" }
-func (b *ELFBinary) Arch() string      { return "x86_64" }
+func (b *ELFBinary) Arch() string      { return b.arch }
 func (b *ELFBinary) Size() int64       { return b.size }
 func (b *ELFBinary) Path() string      { return b.path }
 
 func (b *ELFBinary) FindGopclntab() ([]byte, uint64, error) {
-	// ELF: try .gopclntab section first
 	if s := b.file.Section(".gopclntab"); s != nil {
 		data, err := s.Data()
 		if err != nil {
@@ -95,7 +106,6 @@ func (b *ELFBinary) FindGopclntab() ([]byte, uint64, error) {
 		return data, s.Addr, nil
 	}
 
-	// Fallback: scan .text and .rodata for magic
 	for _, secName := range []string{".text", ".rodata", ".data"} {
 		s := b.file.Section(secName)
 		if s == nil {
@@ -118,7 +128,6 @@ func (b *ELFBinary) Close() error {
 	return b.file.Close()
 }
 
-// DynSymbols returns name->addr map of dynamic symbols (for PLT resolution).
 func (b *ELFBinary) DynSymbols() map[uint64]string {
 	result := make(map[uint64]string)
 	syms, err := b.file.DynamicSymbols()
@@ -133,7 +142,6 @@ func (b *ELFBinary) DynSymbols() map[uint64]string {
 	return result
 }
 
-// TypeLinks returns the raw bytes of the .typelinks section, if present.
 func (b *ELFBinary) TypeLinks() ([]byte, uint64, error) {
 	s := b.file.Section(".typelinks")
 	if s == nil {

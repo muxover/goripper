@@ -8,11 +8,11 @@ import (
 	"os"
 )
 
-// PEBinary implements Binary for Windows PE files.
 type PEBinary struct {
 	file      *pe.File
 	path      string
 	size      int64
+	arch      string
 	imgBase   uint64
 	goVersion string
 }
@@ -29,10 +29,23 @@ func openPE(path string) (*PEBinary, error) {
 		return nil, err
 	}
 
-	b := &PEBinary{file: f, path: path, size: info.Size()}
+	b := &PEBinary{file: f, path: path, size: info.Size(), arch: peArch(f)}
 	b.imgBase = b.detectImageBase()
 	b.goVersion = b.detectGoVersion()
 	return b, nil
+}
+
+func peArch(f *pe.File) string {
+	switch f.Machine {
+	case pe.IMAGE_FILE_MACHINE_ARM64:
+		return "arm64"
+	case pe.IMAGE_FILE_MACHINE_ARMNT:
+		return "arm"
+	case pe.IMAGE_FILE_MACHINE_I386:
+		return "x86"
+	default:
+		return "x86_64"
+	}
 }
 
 func (b *PEBinary) detectImageBase() uint64 {
@@ -63,7 +76,6 @@ func (b *PEBinary) sectionByName(name string) *pe.Section {
 }
 
 func (b *PEBinary) Section(name string) ([]byte, error) {
-	// Map ELF-style names to PE equivalents
 	peName := name
 	if name == ".rodata" {
 		peName = ".rdata"
@@ -112,12 +124,11 @@ func (b *PEBinary) TextSectionRange() (uint64, uint64, error) {
 func (b *PEBinary) ImageBase() uint64 { return b.imgBase }
 func (b *PEBinary) GoVersion() string { return b.goVersion }
 func (b *PEBinary) Format() string    { return "PE" }
-func (b *PEBinary) Arch() string      { return "x86_64" }
+func (b *PEBinary) Arch() string      { return b.arch }
 func (b *PEBinary) Size() int64       { return b.size }
 func (b *PEBinary) Path() string      { return b.path }
 
 func (b *PEBinary) FindGopclntab() ([]byte, uint64, error) {
-	// Scan all sections for gopclntab magic with header validation
 	for _, s := range b.file.Sections {
 		data, err := s.Data()
 		if err != nil {

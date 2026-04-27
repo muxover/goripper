@@ -14,23 +14,26 @@
 
 ---
 
-GoRipper analyzes compiled Go binaries (PE `.exe` and ELF) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
+GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.1.0` — first stable release. PE and ELF support, full analysis pipeline, binary diffing, JSONL streaming, shell completion, and cross-platform release binaries. ARM64 and Mach-O support planned for `v0.2.0`.
+> **Status:** `v0.2.0` — ARM64 support, Mach-O loader, arch-neutral disassembler abstraction, struct field recovery, and interface implementation recovery from `.itablink`.
 
 ---
 
 ## Features
 
-- **Function Extraction** — Parses `gopclntab` via Go's standard library (`debug/gosym`) to recover all function names, addresses, and sizes for Go 1.2 through 1.24.
+- **Function Extraction** — Parses `gopclntab` via Go's standard library (`debug/gosym`) to recover all function names, addresses, and sizes for Go 1.2 through 1.25.
 - **Package Classification** — Automatically separates `runtime`, `stdlib`, `user`, and `cgo` packages.
-- **Call Graph** — Disassembles `.text` using x86 instruction decoding to map every `CALL` edge across the binary.
-- **String Extraction** — Scans `.rodata` and cross-references strings to functions via LEA/MOV RIP-relative instruction analysis.
+- **Multi-format Support** — PE (Windows), ELF (Linux), and Mach-O (macOS) including fat/universal binaries.
+- **Multi-arch Support** — x86_64 and ARM64 (including ADRP+ADD address materialization).
+- **Call Graph** — Arch-neutral disassembler maps every `CALL` edge across the binary; ARM64 BL/BLR and x86 CALL/JMP fully supported.
+- **String Extraction** — Scans `.rodata` and cross-references strings to functions via LEA/ADRP+ADD instruction analysis.
 - **String Classification** — Categorizes strings as URLs, IPs, file paths, secrets, Go package paths, or plain text.
 - **Obfuscation Detection** — Scores each binary for garble/obfuscation (0.0–1.0) using entropy, prefix ratio, string density, and build-info signals.
 - **Binary Diff** — Compares two Go binaries: added/removed/modified functions, new strings, new behavior tags.
 - **Stripped Binary Fallback** — Falls back to `.pdata` exception table when gopclntab is absent, generating synthetic `sub_0x<addr>` names.
-- **Type Recovery** — Parses Go runtime `rtype` descriptors to recover struct names, kinds, and field layouts.
+- **Type Recovery** — Parses Go runtime `rtype` descriptors to recover struct names, kinds, and struct field layouts (name, type, byte offset).
+- **Interface Recovery** — Reads `.itablink` to map every concrete type to the interface it satisfies.
 - **Concurrency Detection** — Identifies goroutine spawns, channel operations, and mutex usage via call graph patterns.
 - **Behavior Tagging** — Tags functions with `NETWORK`, `CRYPTO`, `FILE_WRITE`, `FILE_READ`, `EXEC`, `REGISTRY`, `HTTP`, `DNS`, and more.
 - **CFG + Pseudocode** — Builds basic-block control flow graphs and emits simplified pseudocode per function (optional, slow on large binaries).
@@ -40,7 +43,7 @@ GoRipper analyzes compiled Go binaries (PE `.exe` and ELF) without source code. 
 
 ## Installation
 
-**From source (requires Go 1.24+):**
+**From source (requires Go 1.25+):**
 
 ```bash
 go install github.com/muxover/goripper/cmd/goripper@latest
@@ -218,14 +221,15 @@ goripper/
 ├── cmd/goripper/          # CLI entry point (cobra)
 ├── pkg/analyzer/          # Pipeline orchestrator
 └── internal/
-    ├── binary/            # PE + ELF binary loaders
+    ├── binary/            # PE, ELF, and Mach-O loaders; format + arch detection
+    ├── disasm/            # Arch-neutral disassembler (x86_64 + ARM64)
     ├── diff/              # Binary comparison (added/removed/modified)
     ├── gopclntab/         # Go PC-line table parsing (via debug/gosym)
     ├── functions/         # Function extraction + runtime/stdlib/user classification
-    ├── strings/           # .rodata scanner + LEA cross-reference + classifier
-    ├── callgraph/         # x86 CALL disassembly + edge resolution
+    ├── strings/           # .rodata scanner + LEA/ADRP cross-reference + classifier
+    ├── callgraph/         # CALL disassembly + edge resolution (x86 + ARM64)
     ├── cfg/               # Basic block splitting + pseudocode emission
-    ├── types/             # Go rtype descriptor recovery
+    ├── types/             # rtype descriptor recovery + struct fields + itab recovery
     ├── concurrency/       # Goroutine/channel pattern detection
     ├── behaviors/         # Behavior tag rules (NETWORK, CRYPTO, EXEC, etc.)
     ├── obfuscation/       # Garble/obfuscation scoring and relabeling
@@ -237,10 +241,9 @@ goripper/
 
 ## Limitations
 
-- x86_64 only (ARM64 planned for v0.2.0)
-- PE (Windows) and ELF (Linux) only — no Mach-O yet (planned for v0.2.0)
 - Standard Go toolchain only — AGC/TinyGo binaries are not supported
 - CFG pseudocode is slow on binaries with 10,000+ functions
+- Static analysis only — no dynamic tracing or runtime instrumentation
 
 ---
 

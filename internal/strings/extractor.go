@@ -4,15 +4,13 @@ import (
 	"encoding/binary"
 	"sort"
 
+	"github.com/muxover/goripper/internal/disasm"
 	"github.com/muxover/goripper/internal/functions"
 	"golang.org/x/arch/x86/x86asm"
 )
 
 const minStringLen = 6
 
-// Deduplicate removes entries with identical (Value, Type) pairs. When two
-// entries share the same value and type, their ReferencedBy lists are merged
-// and a single entry is kept. The result is sorted by Offset ascending.
 func Deduplicate(strs []ExtractedString) []ExtractedString {
 	type key struct {
 		value string
@@ -28,7 +26,6 @@ func Deduplicate(strs []ExtractedString) []ExtractedString {
 	for _, s := range strs {
 		k := key{s.Value, s.Type}
 		if e, ok := seen[k]; ok {
-			// Merge ReferencedBy, keep lower Offset.
 			for _, fn := range s.ReferencedBy {
 				e.s.ReferencedBy = appendUniq(e.s.ReferencedBy, fn)
 			}
@@ -51,9 +48,6 @@ func Deduplicate(strs []ExtractedString) []ExtractedString {
 	return result
 }
 
-// Extract scans rodataData for Go string header pairs (ptr uint64, len uint64)
-// at 8-byte aligned offsets. Only emits strings where ptr points back into
-// .rodata, len is in range [minStringLen, 4096], and all bytes are printable ASCII.
 func Extract(rodataData []byte, rodataVA uint64) []ExtractedString {
 	rodataEnd := rodataVA + uint64(len(rodataData))
 	seen := make(map[string]bool)
@@ -101,9 +95,6 @@ type funcRange struct {
 	name       string
 }
 
-// leaRef records the byte offset of a LEA/MOV RIP-relative instruction in textData
-// and the name of the function containing it. Stored per target VA so the second pass
-// can look at nearby instructions for a string-length immediate.
 type leaRef struct {
 	instrPos int
 	funcName string
@@ -137,11 +128,6 @@ func appendUniq(slice []string, s string) []string {
 	return append(slice, s)
 }
 
-// CrossReference annotates each string with the names of functions whose
-// disassembly references the string's virtual address via LEA instructions
-// (RIP-relative addressing in x86_64). It also emits new strings for LEA
-// targets not found by the header-pair scan (e.g. strings only referenced
-// from code and not stored with an adjacent header in .rodata).
 func CrossReference(
 	strs []ExtractedString,
 	funcs []functions.Function,
@@ -150,6 +136,7 @@ func CrossReference(
 	rodataData []byte,
 	rodataVA uint64,
 	rodataEnd uint64,
+	d disasm.Disassembler,
 ) []ExtractedString {
 	if len(funcs) == 0 || len(textData) == 0 {
 		return strs
@@ -160,7 +147,6 @@ func CrossReference(
 		addrToIdx[s.Offset] = i
 	}
 
-	// Build function name → PackageKind map for the stdlib-only fallback cap (Fix 4).
 	kindMap := make(map[string]functions.PackageKind, len(funcs))
 	for _, f := range funcs {
 		kindMap[f.Name] = f.PackageKind
@@ -171,41 +157,20 @@ func CrossReference(
 
 	pos := 0
 	for pos < len(textData) {
-		inst, err := x86asm.Decode(textData[pos:], 64)
+		instr, err := d.Decode(textData[pos:], textVA+uint64(pos))
 		if err != nil {
 			pos++
 			continue
 		}
-
-		instrVA := textVA + uint64(pos)
-
-		if inst.Op == x86asm.LEA || inst.Op == x86asm.MOV {
-			for _, arg := range inst.Args {
-				if arg == nil {
-					continue
-				}
-				mem, ok := arg.(x86asm.Mem)
-				if !ok {
-					continue
-				}
-				if mem.Base == x86asm.RIP {
-					var disp int64 = mem.Disp
-					targetVA := int64(instrVA) + int64(inst.Len) + disp
-					if targetVA >= int64(rodataVA) && targetVA < int64(rodataEnd) {
-						funcName := findContainingFunc(instrVA, franges)
-						if funcName != "" {
-							uva := uint64(targetVA)
-							refs[uva] = append(refs[uva], leaRef{instrPos: pos, funcName: funcName})
-						}
-					}
-				}
+		if instr.Op == disasm.OpAddrLoad && instr.AddrRef >= rodataVA && instr.AddrRef < rodataEnd {
+			funcName := findContainingFunc(instr.VA, franges)
+			if funcName != "" {
+				refs[instr.AddrRef] = append(refs[instr.AddrRef], leaRef{instrPos: pos, funcName: funcName})
 			}
 		}
-
-		pos += inst.Len
+		pos += instr.Len
 	}
 
-	// Annotate strings already found by the header-pair scan.
 	for i := range strs {
 		if lrefs, ok := refs[strs[i].Offset]; ok {
 			for _, lr := range lrefs {
@@ -214,9 +179,6 @@ func CrossReference(
 		}
 	}
 
-	// Emit new strings for LEA targets not found by the header-pair scan.
-	// Try to infer the exact length from nearby MOV instructions; fall back to
-	// a capped printable run when no length immediate is found.
 	seen := make(map[uint64]bool, len(strs))
 	for _, s := range strs {
 		seen[s.Offset] = true
@@ -233,12 +195,13 @@ func CrossReference(
 			continue
 		}
 
-		// Try exact length from a nearby MOV reg, imm instruction.
 		length := 0
-		for _, lr := range lrefs {
-			if l := findLengthNearby(textData, lr.instrPos); l > 0 {
-				length = l
-				break
+		if d.Arch() == "x86_64" {
+			for _, lr := range lrefs {
+				if l := findLengthNearby(textData, lr.instrPos); l > 0 {
+					length = l
+					break
+				}
 			}
 		}
 
@@ -254,7 +217,7 @@ func CrossReference(
 			}
 		}
 		if value == "" {
-			// Fix 4: use 200-byte cap for stdlib/runtime-only refs, 512 otherwise.
+			// stdlib-only refs get a tighter cap: they rarely have user-readable strings.
 			cap := 512
 			if allStdlibRefs(lrefs, kindMap) {
 				cap = 200
@@ -289,8 +252,6 @@ func CrossReference(
 	return strs
 }
 
-// allStdlibRefs returns true when every reference in lrefs belongs to a
-// runtime or stdlib function (not user or CGo code).
 func allStdlibRefs(lrefs []leaRef, kindMap map[string]functions.PackageKind) bool {
 	if len(lrefs) == 0 {
 		return false
@@ -307,12 +268,7 @@ func allStdlibRefs(lrefs []leaRef, kindMap map[string]functions.PackageKind) boo
 	return true
 }
 
-// SuppressBlobs removes fallback blobs whose content is already covered by
-// individually-extracted component strings. A blob is suppressed when at least
-// 2 other string start-VAs fall strictly inside its byte range — those
-// components are already present in the output and the blob adds no information.
 func SuppressBlobs(strs []ExtractedString) []ExtractedString {
-	// Collect VAs of all non-blob strings for containment checks.
 	nonBlobVAs := make([]uint64, 0, len(strs))
 	for _, s := range strs {
 		if !s.IsFallbackBlob {
@@ -333,25 +289,18 @@ func SuppressBlobs(strs []ExtractedString) []ExtractedString {
 		start := sort.Search(len(nonBlobVAs), func(i int) bool { return nonBlobVAs[i] >= lo })
 		count := sort.Search(len(nonBlobVAs)-start, func(i int) bool { return nonBlobVAs[start+i] >= hi })
 		if count >= 2 {
-			continue // suppress: components already individually present
+			continue
 		}
 		result = append(result, s)
 	}
 	return result
 }
 
-// findLengthNearby scans up to 8 instructions backward and 30 instructions
-// forward from instrPos in textData, returning the first valid MOV immediate
-// in [minStringLen, 4096]. MOV to extended registers (R8..R15) are rejected
-// to avoid misattributing the second string length in a CMOVNE pair.
-// Returns 0 if no suitable immediate is found.
 func findLengthNearby(textData []byte, instrPos int) int {
 	if instrPos < 0 || instrPos >= len(textData) {
 		return 0
 	}
 
-	// Backward scan: decode forward from up to 64 bytes before instrPos,
-	// collect instruction start positions, then scan the last 8 backward.
 	backStart := instrPos - 64
 	if backStart < 0 {
 		backStart = 0
@@ -381,7 +330,6 @@ func findLengthNearby(textData []byte, instrPos int) int {
 		}
 	}
 
-	// Forward scan: up to 30 instructions from instrPos.
 	pos = instrPos
 	for i := 0; i < 30 && pos < len(textData); i++ {
 		inst, err := x86asm.Decode(textData[pos:], 64)
@@ -396,9 +344,7 @@ func findLengthNearby(textData []byte, instrPos int) int {
 	return 0
 }
 
-// extractMovImm returns a valid string-length immediate from a MOV instruction,
-// or 0. MOV to extended registers (R8..R15) are rejected to avoid picking up
-// the second length in a CMOVNE pair.
+// extractMovImm rejects R8..R15 destinations to avoid grabbing the second length in a CMOVNE pair.
 func extractMovImm(inst x86asm.Inst) int {
 	if inst.Op != x86asm.MOV {
 		return 0
@@ -424,7 +370,6 @@ func extractMovImm(inst x86asm.Inst) int {
 	return 0
 }
 
-// isExtendedReg returns true for the R8..R15 register family (all widths).
 func isExtendedReg(reg x86asm.Reg) bool {
 	switch reg {
 	case x86asm.R8, x86asm.R8L, x86asm.R8W, x86asm.R8B,
@@ -440,8 +385,7 @@ func isExtendedReg(reg x86asm.Reg) bool {
 	return false
 }
 
-// CrossReferenceSimple uses raw 64-bit address scanning as a fallback for
-// non-PIE binaries where addresses appear literally in .text.
+// CrossReferenceSimple is a fallback for non-PIE binaries where addresses appear literally in .text.
 func CrossReferenceSimple(
 	strs []ExtractedString,
 	funcs []functions.Function,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// Magic constants from src/internal/abi/symtab.go in the Go standard library.
 const (
 	magic12  = 0xFFFFFFFB // Go 1.2–1.15
 	magic116 = 0xFFFFFFFA // Go 1.16–1.17
@@ -13,7 +12,6 @@ const (
 	magic120 = 0xFFFFFFF1 // Go 1.20+
 )
 
-// detectVersion reads the 4-byte magic and returns the version and byte order.
 func detectVersion(data []byte) (PclntabVersion, binary.ByteOrder, error) {
 	if len(data) < 8 {
 		return VersionUnknown, nil, fmt.Errorf("data too short")

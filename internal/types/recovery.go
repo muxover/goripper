@@ -8,8 +8,6 @@ import (
 	gobinary "github.com/muxover/goripper/internal/binary"
 )
 
-// Recover scans the binary for Go type descriptors embedded in .rodata / .typelinks.
-// It returns a best-effort list of recovered types; partial results are acceptable.
 func Recover(bin gobinary.Binary) ([]RecoveredType, error) {
 	var types []RecoveredType
 
@@ -21,12 +19,10 @@ func Recover(bin gobinary.Binary) ([]RecoveredType, error) {
 	order := binary.LittleEndian
 	ptrSize := uint8(8) // x86_64
 
-	// Strategy 1: Use .typelinks if available (ELF binaries)
 	if types, ok := tryTypelinks(bin, rodataData, rodataVA, order, ptrSize); ok {
 		return types, nil
 	}
 
-	// Strategy 2: Scan .rodata for type name strings prefixed with known patterns
 	types = scanForTypeNames(rodataData, rodataVA, order, ptrSize)
 	if types == nil {
 		types = []RecoveredType{}
@@ -36,7 +32,6 @@ func Recover(bin gobinary.Binary) ([]RecoveredType, error) {
 }
 
 func readRodata(bin gobinary.Binary) ([]byte, uint64, error) {
-	// Try .rodata (ELF) then .rdata (PE)
 	for _, name := range []string{".rodata", ".rdata"} {
 		data, err := bin.Section(name)
 		if err == nil {
@@ -47,9 +42,7 @@ func readRodata(bin gobinary.Binary) ([]byte, uint64, error) {
 	return nil, 0, fmt.Errorf("no rodata section found")
 }
 
-// tryTypelinks uses the ELF .typelinks section (int32 offsets into .rodata).
 func tryTypelinks(bin gobinary.Binary, rodataData []byte, rodataVA uint64, order binary.ByteOrder, ptrSize uint8) ([]RecoveredType, bool) {
-	// Only ELF binaries have .typelinks as a separate section
 	type typelinkBin interface {
 		TypeLinks() ([]byte, uint64, error)
 	}
@@ -66,7 +59,6 @@ func tryTypelinks(bin gobinary.Binary, rodataData []byte, rodataVA uint64, order
 
 	var types []RecoveredType
 
-	// .typelinks contains int32 offsets from the start of .rodata to rtype structs
 	for i := 0; i+4 <= len(tlData); i += 4 {
 		off := int(order.Uint32(tlData[i : i+4]))
 		if off < 0 || off >= len(rodataData) {
@@ -107,13 +99,11 @@ func parseRType(data []byte, off int, ptrSize uint8, order binary.ByteOrder, bas
 
 	size := order.Uint64(data[off : off+8])
 	kind := data[off+23] & kindMask
-
-	// str field at offset 40: int32 offset to name in .rodata
 	strOff := int32(order.Uint32(data[off+40 : off+44]))
 
 	name := ""
 	if strOff != 0 {
-		nameOff := off + int(strOff) // relative to this rtype
+		nameOff := off + int(strOff) // nameOff is relative to the rtype's own position
 		name = readTypeName(data, nameOff)
 	}
 
@@ -128,24 +118,97 @@ func parseRType(data []byte, off int, ptrSize uint8, order binary.ByteOrder, bas
 		Addr: baseVA + uint64(off),
 	}
 
+	if kind == kindStruct {
+		rt.Fields = parseStructFields(data, off, order, baseVA)
+	}
+
 	return rt, nil
 }
 
-// readTypeName reads a Go type name from the name section.
-// Go type names are stored with a 2-byte length prefix (varint-like).
+// structType layout (64-bit, Go 1.18+):
+//
+//	[0:48]  rtype
+//	[48:52] PkgPath NameOff (int32)
+//	[52:56] padding
+//	[56:64] Fields.Data *StructField (VA)
+//	[64:72] Fields.Len  int
+//	[72:80] Fields.Cap  int
+//
+// StructField (24 bytes):
+//
+//	[0:4]   Name_       NameOff (int32, relative to rtype position)
+//	[4:8]   padding
+//	[8:16]  Typ_        *abi.Type (VA)
+//	[16:24] OffsetEmbed uintptr  (offset << 1 | embedded)
+const structTypeHeaderSize = 80 // rtype(48) + pkgPath(4) + pad(4) + slice(24)
+const structFieldSize = 24
+
+func parseStructFields(data []byte, off int, order binary.ByteOrder, baseVA uint64) []FieldDescriptor {
+	if off+structTypeHeaderSize > len(data) {
+		return nil
+	}
+
+	fieldsDataVA := order.Uint64(data[off+56 : off+64])
+	fieldsLen := int(order.Uint64(data[off+64 : off+72]))
+
+	if fieldsLen <= 0 || fieldsLen > 128 {
+		return nil
+	}
+	if fieldsDataVA < baseVA {
+		return nil
+	}
+	fieldsOff := int(fieldsDataVA - baseVA)
+	if fieldsOff+fieldsLen*structFieldSize > len(data) {
+		return nil
+	}
+
+	fields := make([]FieldDescriptor, 0, fieldsLen)
+	for i := 0; i < fieldsLen; i++ {
+		fOff := fieldsOff + i*structFieldSize
+		if fOff+structFieldSize > len(data) {
+			break
+		}
+
+		nameOff := int(int32(order.Uint32(data[fOff : fOff+4])))
+		typPtr := order.Uint64(data[fOff+8 : fOff+16])
+		offsetEmbed := order.Uint64(data[fOff+16 : fOff+24])
+		fieldOffset := uint32(offsetEmbed >> 1)
+
+		// field NameOff is relative to the StructField's own position (mirrors rtype.str behavior)
+		fieldName := readTypeName(data, fOff+nameOff)
+		if fieldName == "" || !isValidTypeName(fieldName) {
+			continue
+		}
+
+		typName := ""
+		if typPtr >= baseVA {
+			typOff := int(typPtr - baseVA)
+			if rt, err := parseRType(data, typOff, 8, order, baseVA); err == nil {
+				typName = rt.Name
+			}
+		}
+
+		fields = append(fields, FieldDescriptor{
+			Name:   fieldName,
+			Type:   typName,
+			Offset: fieldOffset,
+		})
+	}
+
+	return fields
+}
+
 func readTypeName(data []byte, off int) string {
 	if off < 0 || off >= len(data) {
 		return ""
 	}
 
-	// Type name format: [flags uint8][len uint16 big-endian][name bytes...]
+	// layout: [flags uint8][len uint16 big-endian][name bytes...]
 	if off+3 > len(data) {
 		return ""
 	}
 
-	// flags byte
 	_ = data[off]
-	// 2-byte length (big-endian)
 	nameLen := int(data[off+1])<<8 | int(data[off+2])
 
 	if nameLen <= 0 || nameLen > 512 || off+3+nameLen > len(data) {
@@ -155,17 +218,14 @@ func readTypeName(data []byte, off int) string {
 	return string(data[off+3 : off+3+nameLen])
 }
 
-// isValidTypeName returns true if the name looks like a real Go type name.
 func isValidTypeName(name string) bool {
 	if len(name) == 0 || len(name) > 256 {
 		return false
 	}
-	// Must start with a letter or * (pointer) or [ (slice/array)
 	c := name[0]
 	if c != '*' && c != '[' && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z') {
 		return false
 	}
-	// Must not contain null bytes or control characters
 	for _, ch := range name {
 		if ch < 32 {
 			return false
@@ -174,24 +234,17 @@ func isValidTypeName(name string) bool {
 	return true
 }
 
-// scanForTypeNames is a fallback that searches .rodata for type name patterns.
-// Go embeds type names as "go:type." prefixed strings in some builds.
 func scanForTypeNames(data []byte, baseVA uint64, order binary.ByteOrder, ptrSize uint8) []RecoveredType {
 	var types []RecoveredType
 	seen := make(map[string]bool)
 
-	// Simple scan: look for null-terminated strings that look like type names
-	// and are followed by rtype-sized alignment
 	i := 0
 	for i < len(data)-rtypeSize {
 		// Try to read a type name at position i
 		name := readTypeName(data, i)
 		if name != "" && isValidTypeName(name) && !seen[name] {
-			// Check if this could be followed by a valid rtype
 			nameRecordSize := 3 + len(name)
-			rtOff := i - rtypeSize // rtype comes before the name in Go's layout
-
-			// Alternative: try rtype at current position
+			rtOff := i - rtypeSize
 			if i+rtypeSize <= len(data) {
 				kind := data[i+23] & kindMask
 				if kind >= 1 && kind <= 26 {
@@ -209,7 +262,6 @@ func scanForTypeNames(data []byte, baseVA uint64, order binary.ByteOrder, ptrSiz
 		i++
 	}
 
-	// Deduplicate and filter
 	var result []RecoveredType
 	seenFinal := make(map[string]bool)
 	for _, t := range types {
@@ -222,9 +274,7 @@ func scanForTypeNames(data []byte, baseVA uint64, order binary.ByteOrder, ptrSiz
 	return result
 }
 
-// isInterestingType filters out boring/internal type names.
 func isInterestingType(name string) bool {
-	// Skip basic types
 	boring := map[string]bool{
 		"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
 		"uint": true, "uint8": true, "uint16": true, "uint32": true, "uint64": true,
@@ -234,7 +284,6 @@ func isInterestingType(name string) bool {
 	if boring[name] {
 		return false
 	}
-	// Skip runtime internal types
 	if strings.HasPrefix(name, "runtime.") || strings.HasPrefix(name, "internal/") {
 		return false
 	}

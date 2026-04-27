@@ -41,6 +41,9 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 	if opts.ShowTypes && len(result.Types) > 0 {
 		writeTypes(result.Types, w, opts)
 	}
+	if opts.ShowTypes && len(result.Interfaces) > 0 {
+		writeInterfaces(result.Interfaces, w, opts)
+	}
 }
 
 // TextOptions controls what the text writer emits.
@@ -101,6 +104,9 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 		sum.TotalStrings, sum.URLStrings, sum.IPStrings, sum.PathStrings,
 		sum.SecretStrings, sum.PkgPathStrings, sum.PlainStrings)
 	fmt.Fprintf(w, "Recovered types:      %d\n", sum.RecoveredTypes)
+	if sum.InterfaceImpls > 0 {
+		fmt.Fprintf(w, "Interface impls:      %d\n", sum.InterfaceImpls)
+	}
 	if sum.DecryptorStubs > 0 {
 		fmt.Fprintf(w, "Decryptor stubs:      %d  (possible string encryption)\n", sum.DecryptorStubs)
 	}
@@ -297,6 +303,16 @@ func writeCallGraph(graph map[string][]string, w io.Writer, opts TextOptions) {
 		if truncated > 0 {
 			fmt.Fprintf(w, "  └── ... and %d more\n", truncated)
 		}
+	}
+	fmt.Fprintln(w)
+}
+
+func writeInterfaces(ifaces []InterfaceImplOutput, w io.Writer, opts TextOptions) {
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Interface Implementations (%d) ===\n", len(ifaces))
+	}
+	for _, it := range ifaces {
+		fmt.Fprintf(w, "  %s  implements  %s  (itab %s)\n", it.Concrete, it.Interface, it.ItabAddr)
 	}
 	fmt.Fprintln(w)
 }

@@ -24,7 +24,6 @@ type TagRule struct {
 	StringPat   *regexp.Regexp // OR if function references a string matching this pattern
 }
 
-// tagRules is the static rule set applied to all functions.
 var tagRules = []TagRule{
 	{
 		Tag: TagHTTP,

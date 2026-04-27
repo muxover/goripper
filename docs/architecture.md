@@ -13,12 +13,17 @@ binary file
     │
     ▼
 ┌─────────────────┐
-│  binary loader  │  debug/pe or debug/elf — sections, VA, image base
-└────────┬────────┘
+│  binary loader  │  PE, ELF, or Mach-O — auto-detected from magic bytes
+└────────┬────────┘  arch detected from ELF e_machine / PE Machine field
          │
          ▼
 ┌─────────────────┐
-│   gopclntab     │  debug/gosym — function names, entry PCs, sizes (Go 1.2–1.24)
+│    disasm       │  internal/disasm.New(arch) → x86_64 or arm64 backend
+└────────┬────────┘  single Disassembler interface used by all downstream stages
+         │
+         ▼
+┌─────────────────┐
+│   gopclntab     │  debug/gosym — function names, entry PCs, sizes (Go 1.2–1.25)
 └────────┬────────┘       │ absent → synthetic sub_0x<addr> from .pdata
          │
          ▼
@@ -28,12 +33,12 @@ binary file
          │
          ▼
 ┌─────────────────┐
-│    strings      │  .rodata header pairs + LEA RIP-relative cross-reference
+│    strings      │  .rodata header pairs + LEA/ADRP+ADD cross-reference
 └────────┬────────┘       → classify → split URLs → suppress blobs → deduplicate
          │
          ▼
 ┌─────────────────┐
-│   call graph    │  x86 CALL disassembly via golang.org/x/arch/x86/x86asm
+│   call graph    │  arch-neutral CALL disassembly (x86 CALL/JMP, arm64 BL/BLR)
 └────────┬────────┘
          │
          ▼
@@ -43,8 +48,8 @@ binary file
          │
          ▼
 ┌─────────────────┐
-│  type recovery  │  rtype descriptor scan in .rodata / .typelinks (--types only)
-└────────┬────────┘
+│  type recovery  │  rtype descriptor scan; struct field layout; itab recovery
+└────────┬────────┘  (--types only)
          │
          ▼
 ┌─────────────────┐
@@ -73,13 +78,14 @@ binary file
 
 | Package | Path | Owns | Key types |
 |---------|------|------|-----------|
-| binary | `internal/binary` | PE + ELF loading, section access, gopclntab scanning | `Binary` (interface), `PEBinary`, `ELFBinary` |
+| binary | `internal/binary` | PE, ELF, and Mach-O loading; format + arch detection | `Binary` (interface), `PEBinary`, `ELFBinary`, `MachoBinary` |
+| disasm | `internal/disasm` | Arch-neutral instruction decoder (x86_64 + ARM64) | `Disassembler` (interface), `Instr`, `Op` |
 | gopclntab | `internal/gopclntab` | PC-line table parsing via `debug/gosym` | `ParsedPclntab`, `PclntabVersion` |
 | functions | `internal/functions` | Extraction, deduplication, package classification | `Function`, `PackageKind`, `FunctionSource` |
-| strings | `internal/strings` | `.rodata` extraction, LEA cross-reference, classification | `ExtractedString`, `StringType` |
-| callgraph | `internal/callgraph` | x86 CALL disassembly, edge building, addr→name resolution | `CallGraph`, `Edge`, `AddrName` |
-| cfg | `internal/cfg` | Basic block splitting, branch resolution, pseudocode | `CFG`, `Block` |
-| types | `internal/types` | rtype descriptor recovery from `.rodata` / `.typelinks` | `RecoveredType`, `TypeKind`, `FieldDescriptor` |
+| strings | `internal/strings` | `.rodata` extraction, LEA/ADRP cross-reference, classification | `ExtractedString`, `StringType` |
+| callgraph | `internal/callgraph` | Arch-neutral CALL disassembly, edge building, addr→name resolution | `CallGraph`, `Edge`, `AddrName` |
+| cfg | `internal/cfg` | Basic block splitting, branch resolution, pseudocode | `CFG`, `BasicBlock` |
+| types | `internal/types` | rtype recovery, struct field parsing, itab recovery | `RecoveredType`, `TypeKind`, `FieldDescriptor`, `InterfaceImpl` |
 | concurrency | `internal/concurrency` | Goroutine / channel / sync pattern detection | `ConcurrencyPattern` |
 | behaviors | `internal/behaviors` | Rule-based behavior tagging, CGo boundary mapping | `Rule`, `Tag` |
 | obfuscation | `internal/obfuscation` | Garble scoring, decryptor stub detection, XOR recovery | `Result`, `StubMatch` |
@@ -95,12 +101,13 @@ binary file
 The central type is `output.AnalysisResult`. The analyzer builds it in `buildOutput()` after all pipeline stages complete:
 
 ```
-internal/functions.Function      →  output.FunctionOutput
-internal/strings.ExtractedString →  output.StringOutput
-internal/callgraph.CallGraph     →  map[string][]string
-internal/types.RecoveredType     →  output.TypeOutput
-internal/obfuscation.StubMatch   →  output.DecryptorStubOutput
-(aggregated counts)              →  output.SummaryOutput
+internal/functions.Function       →  output.FunctionOutput
+internal/strings.ExtractedString  →  output.StringOutput
+internal/callgraph.CallGraph      →  map[string][]string
+internal/types.RecoveredType      →  output.TypeOutput
+internal/types.InterfaceImpl      →  output.InterfaceImplOutput
+internal/obfuscation.StubMatch    →  output.DecryptorStubOutput
+(aggregated counts)               →  output.SummaryOutput
 ```
 
 `AnalysisResult` is the only thing that crosses the `internal/` boundary into `cmd/` and `pkg/`. All three output writers (`WriteJSON`, `WriteJSONL`, `WriteText`) consume it.
@@ -109,13 +116,13 @@ internal/obfuscation.StubMatch   →  output.DecryptorStubOutput
 
 ## Binary Interface
 
-`internal/binary.Binary` is the abstraction over PE and ELF:
+`internal/binary.Binary` is the abstraction over PE, ELF, and Mach-O:
 
 ```go
 type Binary interface {
     Path() string
-    Format() string        // "PE" or "ELF"
-    Arch() string          // "x86_64"
+    Format() string        // "PE", "ELF", or "Mach-O"
+    Arch() string          // "x86_64", "arm64", "x86", "arm"
     GoVersion() string
     ImageBase() uint64
     Size() int64
@@ -123,26 +130,61 @@ type Binary interface {
     SectionVA(name string) (uint64, error)
     TextSectionRange() (uint64, uint64, error)
     FindGopclntab() ([]byte, uint64, error)
+    Close() error
 }
 ```
 
-`binary.Open()` auto-detects the format from the file magic and returns the appropriate implementation. All downstream stages call only this interface — none import `debug/pe` or `debug/elf` directly.
+`binary.Open()` auto-detects the format from the file magic (ELF `\x7FELF`, PE `MZ`, Mach-O `0xFEEDFACE`/`0xFEEDFACF`/`0xCAFEBABE` and their byte-swapped variants) and returns the appropriate implementation. All downstream stages call only this interface.
+
+---
+
+## Disassembler Interface
+
+`internal/disasm.Disassembler` decouples all analysis stages from specific architectures:
+
+```go
+type Disassembler interface {
+    Arch() string
+    Decode(data []byte, va uint64) (Instr, error)
+}
+
+type Instr struct {
+    VA       uint64
+    Len      int
+    Op       Op       // OpCall, OpRet, OpCondBranch, OpUncondBranch, OpAddrLoad, OpOther
+    Target   uint64   // branch/call target VA; 0 if indirect
+    AddrRef  uint64   // data VA for OpAddrLoad (LEA, ADRP+ADD, ADR)
+    Indirect bool     // true for register-target calls/jumps
+}
+```
+
+`disasm.New(arch)` returns the right backend. ARM64 ADRP+ADD pairs are decoded as a single `OpAddrLoad` instruction with the full resolved address in `AddrRef`.
 
 ---
 
 ## String Extraction
 
-String extraction is the most complex stage. It runs in three passes:
+String extraction runs in three passes:
 
-**Pass 1 — header pairs:** Scans `.rodata` for Go string header `(ptr, len)` pairs. A valid header has a pointer into `.rodata` and a length in `[6, 4096]`. This finds strings that have a header in the data section.
+**Pass 1 — header pairs:** Scans `.rodata` for Go string header `(ptr, len)` pairs. A valid header has a pointer into `.rodata` and a length in `[6, 4096]`.
 
-**Pass 2 — LEA cross-reference:** Disassembles `.text` looking for RIP-relative LEA instructions that point into `.rodata`. For each LEA, scans ±30 instructions for a `MOV reg, imm` to infer the exact string length. This finds hardcoded strings passed directly to functions without a header pair (e.g. URLs passed straight to `http.Get`).
+**Pass 2 — disassembler cross-reference:** Decodes `.text` using the arch-neutral `Disassembler`, looking for `OpAddrLoad` instructions (LEA on x86, ADRP+ADD/ADR on ARM64) that point into `.rodata`. For x86, scans ±30 instructions for a `MOV reg, imm` to infer exact string length; ARM64 length inference is skipped (ADRP addresses are typically passed with explicit length args).
 
 **Pass 3 — post-processing:**
 - `Classify` — assigns `StringType` (url, ip, path, secret, pkgpath, plain)
 - `SplitConcatenatedURLs` — splits CMOVNE-pattern URL blobs at scheme boundaries
 - `SuppressBlobs` — removes 512-byte fallback blobs already covered by extracted components
 - `Deduplicate` — merges identical `(value, type)` pairs, unions `ReferencedBy` lists
+
+---
+
+## Type Recovery
+
+Type recovery runs in two parts when `--types` is enabled:
+
+**rtype recovery:** Scans `.typelinks` (ELF/Mach-O) for `int32` offsets into `.rodata` pointing at `rtype` descriptors. For each rtype, reads the 48-byte header, extracts the type name (via `nameOff`), and for struct kinds additionally parses the `structType` layout to extract field names, types, and byte offsets.
+
+**Itab recovery:** Reads the `.itablink` section, which contains an array of pointers to `itab` structs. Each itab holds a pointer to an `interfacetype` and a pointer to the concrete `rtype`. Both are resolved to type names, producing `InterfaceImpl{Interface, Concrete, ItabAddr}` records. These appear in `AnalysisResult.Interfaces`.
 
 ---
 
@@ -176,11 +218,9 @@ A function receives the tag if any of its direct callees match `CallTargets` OR 
 
 ## Limitations
 
-- **x86_64 only.** The string extractor, call graph builder, and CFG builder all use `golang.org/x/arch/x86/x86asm`. ARM64 support is planned for v0.2.0.
-- **PE and ELF only.** Mach-O is planned for v0.2.0.
-- **Standard Go toolchain only.** AGC and TinyGo binaries use different metadata layouts and are not supported.
-- **Static analysis only.** No dynamic instrumentation or runtime tracing.
-- **Type field recovery is partial.** `--types` recovers type names and kinds from rtype descriptors. Struct field layouts require following additional pointer chains and are not yet populated.
+- Standard Go toolchain only — AGC and TinyGo binaries use different metadata layouts.
+- Static analysis only — no dynamic instrumentation or runtime tracing.
+- CFG pseudocode is slow on binaries with 10,000+ functions.
 
 ---
 

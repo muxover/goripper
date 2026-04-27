@@ -11,6 +11,7 @@ import (
 	"github.com/muxover/goripper/internal/callgraph"
 	"github.com/muxover/goripper/internal/cfg"
 	"github.com/muxover/goripper/internal/concurrency"
+	"github.com/muxover/goripper/internal/disasm"
 	"github.com/muxover/goripper/internal/functions"
 	"github.com/muxover/goripper/internal/gopclntab"
 	"github.com/muxover/goripper/internal/obfuscation"
@@ -19,7 +20,6 @@ import (
 	gtypes "github.com/muxover/goripper/internal/types"
 )
 
-// Analyzer orchestrates the full GoRipper analysis pipeline.
 type Analyzer struct {
 	opts   Options
 	binary gobinary.Binary
@@ -30,18 +30,18 @@ type Analyzer struct {
 	graph      *callgraph.CallGraph
 	cfgs       map[string]*cfg.CFG
 	rtypes     []gtypes.RecoveredType
+	itabs      []gtypes.InterfaceImpl
 	concurrent []concurrency.ConcurrencyPattern
 
-	// v0.0.4-pre additions
 	obfResult      obfuscation.Result
 	decryptorStubs []obfuscation.StubMatch
 	xorKeys        map[string]byte
 	cgoCallSites   []string
 	warnings       []string
 	hasBuildInfo   bool
+	disasm         disasm.Disassembler
 }
 
-// New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
 	return &Analyzer{
 		opts:    opts,
@@ -50,9 +50,7 @@ func New(opts Options) *Analyzer {
 	}
 }
 
-// Run executes the full analysis pipeline and returns the result.
-// The load-binary stage is fatal; all subsequent stages are crash-safe —
-// a panic or error appends a warning and pipeline execution continues.
+// Run executes the analysis pipeline. Load is fatal; all other stages are crash-safe.
 func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 	if a.opts.Verbose {
 		log.Printf("[*] load binary...")
@@ -88,8 +86,6 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 	return a.buildOutput(), nil
 }
 
-// safeRun calls fn and converts any panic into an error so a single bad
-// stage cannot crash the entire pipeline.
 func safeRun(stage string, fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -105,6 +101,7 @@ func (a *Analyzer) loadBinary() error {
 		return err
 	}
 	a.binary = bin
+	a.disasm = disasm.New(bin.Arch())
 	if _, err2 := buildinfo.ReadFile(a.opts.BinaryPath); err2 == nil {
 		a.hasBuildInfo = true
 	}
@@ -145,7 +142,6 @@ func (a *Analyzer) extractFunctions() error {
 		return nil
 	}
 
-	// Stripped/garbled fallback: recover function boundaries from .pdata (PE).
 	addrs, _ := a.syntheticAddrs()
 	if len(addrs) == 0 {
 		a.warnings = append(a.warnings,
@@ -168,8 +164,6 @@ func (a *Analyzer) extractFunctions() error {
 	return nil
 }
 
-// syntheticAddrs recovers (addr, size) pairs from the PE .pdata section.
-// Each entry: BeginRVA uint32, EndRVA uint32, UnwindInfoRVA uint32 (12 bytes total).
 func (a *Analyzer) syntheticAddrs() ([][2]uint64, error) {
 	data, err := a.binary.Section(".pdata")
 	if err != nil || len(data) < 12 {
@@ -214,7 +208,7 @@ func (a *Analyzer) extractStrings() error {
 	if err2 == nil {
 		textVA, _ := a.binary.SectionVA(".text")
 		rodataEnd := rodataVA + uint64(len(rodataData))
-		strs = gstrings.CrossReference(strs, a.funcs, textData, textVA, rodataData, rodataVA, rodataEnd)
+		strs = gstrings.CrossReference(strs, a.funcs, textData, textVA, rodataData, rodataVA, rodataEnd, a.disasm)
 		strs = gstrings.CrossReferenceSimple(strs, a.funcs, textData, textVA)
 	}
 
@@ -223,7 +217,6 @@ func (a *Analyzer) extractStrings() error {
 	strs = gstrings.SuppressBlobs(strs)
 	strs = gstrings.Deduplicate(strs)
 
-	// Apply min-length filter if requested.
 	if a.opts.MinStringLen > 0 {
 		filtered := strs[:0]
 		for _, s := range strs {
@@ -234,7 +227,6 @@ func (a *Analyzer) extractStrings() error {
 		strs = filtered
 	}
 
-	// Apply --no-plain filter.
 	if a.opts.NoPlain {
 		filtered := strs[:0]
 		for _, s := range strs {
@@ -245,7 +237,6 @@ func (a *Analyzer) extractStrings() error {
 		strs = filtered
 	}
 
-	// Apply --min-refs filter: drop strings with fewer than N user-code refs.
 	if a.opts.MinRefs > 0 {
 		userKind := make(map[string]bool, len(a.funcs))
 		for _, fn := range a.funcs {
@@ -289,7 +280,7 @@ func (a *Analyzer) buildCallGraph() error {
 	}
 	textVA, _ := a.binary.SectionVA(".text")
 
-	graph, err := callgraph.Build(a.funcs, textData, textVA)
+	graph, err := callgraph.Build(a.funcs, textData, textVA, a.disasm)
 	if err != nil {
 		return fmt.Errorf("callgraph.Build: %w", err)
 	}
@@ -324,7 +315,7 @@ func (a *Analyzer) buildCFGs() error {
 		if fn.IsRuntime && a.opts.NoRuntime {
 			continue
 		}
-		g, err := cfg.Build(fn, textData, textVA)
+		g, err := cfg.Build(fn, textData, textVA, a.disasm)
 		if err != nil {
 			continue
 		}
@@ -346,6 +337,9 @@ func (a *Analyzer) recoverTypes() error {
 		return nil
 	}
 	a.rtypes = types
+
+	itabs, _ := gtypes.RecoverItabs(a.binary)
+	a.itabs = itabs
 	return nil
 }
 
@@ -482,6 +476,15 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		result.Types = append(result.Types, to)
 	}
 
+	result.Interfaces = make([]output.InterfaceImplOutput, 0, len(a.itabs))
+	for _, it := range a.itabs {
+		result.Interfaces = append(result.Interfaces, output.InterfaceImplOutput{
+			Interface: it.Interface,
+			Concrete:  it.Concrete,
+			ItabAddr:  fmt.Sprintf("0x%x", it.ItabAddr),
+		})
+	}
+
 	result.DecryptorStubs = make([]output.DecryptorStubOutput, 0, len(a.decryptorStubs))
 	for _, s := range a.decryptorStubs {
 		dso := output.DecryptorStubOutput{
@@ -498,6 +501,7 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	sum := output.SummaryOutput{
 		TotalFunctions: len(a.funcs),
 		RecoveredTypes: len(a.rtypes),
+		InterfaceImpls: len(a.itabs),
 		DecryptorStubs: len(a.decryptorStubs),
 		CgoCallSites:   nilSafe(a.cgoCallSites),
 	}

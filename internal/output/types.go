@@ -53,6 +53,13 @@ type FieldOutput struct {
 	Offset uint32 `json:"offset"`
 }
 
+// InterfaceImplOutput describes a concrete type implementing an interface, recovered from .itablink.
+type InterfaceImplOutput struct {
+	Interface string `json:"interface"`
+	Concrete  string `json:"concrete"`
+	ItabAddr  string `json:"itab_addr"` // hex VA
+}
+
 // DecryptorStubOutput describes a suspected string-decryption stub function.
 type DecryptorStubOutput struct {
 	Name        string `json:"name"`
@@ -78,6 +85,7 @@ type SummaryOutput struct {
 	PkgPathStrings      int      `json:"pkg_path_strings"`
 	PlainStrings        int      `json:"plain_strings"`
 	RecoveredTypes      int      `json:"recovered_types"`
+	InterfaceImpls      int      `json:"interface_impls"`
 	ConcurrentFunctions int      `json:"concurrent_functions"`
 	CgoCallSites        []string `json:"cgo_call_sites,omitempty"`
 	DecryptorStubs      int      `json:"decryptor_stubs"`
@@ -85,12 +93,13 @@ type SummaryOutput struct {
 
 // AnalysisResult is the top-level output structure.
 type AnalysisResult struct {
-	BinaryInfo     BinaryInfo            `json:"binary_info"`
-	Functions      []FunctionOutput      `json:"functions"`
-	Strings        []StringOutput        `json:"strings"`
-	CallGraph      map[string][]string   `json:"call_graph"`
-	Types          []TypeOutput          `json:"types"`
-	DecryptorStubs []DecryptorStubOutput `json:"decryptor_stubs,omitempty"`
-	Summary        SummaryOutput         `json:"summary"`
-	Warnings       []string              `json:"warnings,omitempty"`
+	BinaryInfo     BinaryInfo             `json:"binary_info"`
+	Functions      []FunctionOutput       `json:"functions"`
+	Strings        []StringOutput         `json:"strings"`
+	CallGraph      map[string][]string    `json:"call_graph"`
+	Types          []TypeOutput           `json:"types"`
+	Interfaces     []InterfaceImplOutput  `json:"interfaces,omitempty"`
+	DecryptorStubs []DecryptorStubOutput  `json:"decryptor_stubs,omitempty"`
+	Summary        SummaryOutput          `json:"summary"`
+	Warnings       []string               `json:"warnings,omitempty"`
 }

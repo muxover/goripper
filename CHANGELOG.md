@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-28
+
+### Added
+- **Arch-neutral disassembler** (`internal/disasm`): `Disassembler` interface + `New(arch)` factory.
+  - x86_64 backend: CALL (direct/indirect), RET, JMP, all conditional branches, LEA/MOV RIP-relative (`OpAddrLoad`).
+  - ARM64 backend: BL (direct call), BLR (indirect call), RET, B/B.cond, BR, CBZ, CBNZ, TBZ, TBNZ, ADRP+ADD pair and ADR (`OpAddrLoad`).
+  - All downstream stages (call graph, CFG, string cross-reference) now use this interface — no more x86-only paths.
+- **Mach-O support** (`internal/binary/macho_loader.go`): full `Binary` interface implementation for macOS binaries.
+  - Fat/universal binary detection — prefers amd64 slice, falls back to arm64.
+  - Canonical section name mapping (`.text` → `__text`, `.rodata` → `__rodata`/`__const`, etc.).
+  - `FindGopclntab()` tries `__gopclntab` section first, then scans `__text`/`__rodata`/`__data`.
+  - `binary.Open()` now auto-detects Mach-O magic (32-bit, 64-bit, fat — both endiannesses).
+- **Real arch detection** in ELF and PE loaders: `Arch()` now reads `e_machine` (ELF) and `Machine` (PE) instead of hardcoding `"x86_64"`. ARM64 ELF and PE binaries are correctly identified.
+- **Struct field recovery** (`internal/types`): when `--types` is enabled, struct `rtype` descriptors are now fully parsed — field names, field types (resolved from `Typ_` pointer), and byte offsets are populated in `RecoveredType.Fields`.
+- **Interface implementation recovery** (`internal/types/itab.go`): `RecoverItabs()` reads the `.itablink` section (ELF/Mach-O) to produce a list of `(interface, concrete, itab_addr)` triples. Exposed in `AnalysisResult.Interfaces` and the text report under `=== Interface Implementations ===`.
+- `InterfaceImplOutput` type in `internal/output`, `Interfaces []InterfaceImplOutput` on `AnalysisResult`, `InterfaceImpls` counter in `SummaryOutput`.
+- `golang.org/x/arch` bumped from v0.24.0 to v0.26.0; Go toolchain bumped to 1.25.
+- 14 new tests in `internal/disasm` (x86 + ARM64 instruction decoding) and Mach-O magic detection tests in `internal/binary`.
+
+### Changed
+- Comment cleanup across the entire codebase: removed AI-style docstrings and WHAT comments; only non-obvious WHY comments remain.
+- `internal/callgraph/disasm.go` rewritten to use `Disassembler` interface — ARM64 call edges are now resolved.
+- `internal/cfg/builder.go`, `types.go`, `pseudocode.go` rewritten to use `disasm.Instr` — CFG is now arch-neutral.
+
 ## [0.1.0] - 2026-03-29
 
 ### Added
@@ -246,7 +270,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/muxover/goripper/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/muxover/goripper/compare/v0.0.9-pre...v0.1.0
 [0.0.9-pre]: https://github.com/muxover/goripper/compare/v0.0.8-pre...v0.0.9-pre
 [0.0.8-pre]: https://github.com/muxover/goripper/compare/v0.0.7-pre...v0.0.8-pre
