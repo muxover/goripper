@@ -121,6 +121,14 @@ func (b *PEBinary) TextSectionRange() (uint64, uint64, error) {
 	return start, end, nil
 }
 
+func (b *PEBinary) SectionNames() []string {
+	names := make([]string, 0, len(b.file.Sections))
+	for _, s := range b.file.Sections {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
 func (b *PEBinary) ImageBase() uint64 { return b.imgBase }
 func (b *PEBinary) GoVersion() string { return b.goVersion }
 func (b *PEBinary) Format() string    { return "PE" }

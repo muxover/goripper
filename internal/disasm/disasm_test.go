@@ -24,8 +24,6 @@ func TestNew_ARM64(t *testing.T) {
 	}
 }
 
-// --- x86_64 decoder tests ---
-
 func TestX86_Call_Direct(t *testing.T) {
 	// CALL rel32 0 → target = va + 5 + 0 = 0x1000 + 5
 	data := []byte{0xE8, 0x00, 0x00, 0x00, 0x00}
@@ -145,7 +143,7 @@ func TestX86_EmptyData_Error(t *testing.T) {
 	}
 }
 
-// --- ARM64 decoder tests ---
+
 
 func TestARM64_BL(t *testing.T) {
 	// BL #0 encodes as 0x94000000 (offset 0 → target = va)

@@ -13,7 +13,6 @@ var (
 	Date    = "unknown"
 )
 
-// String returns a formatted version string.
 func String() string {
 	return fmt.Sprintf("%s (%s %s/%s)\n  commit: %s\n  built:  %s",
 		Version, runtime.Version(), runtime.GOOS, runtime.GOARCH, Commit, Date)

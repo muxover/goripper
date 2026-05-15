@@ -1,6 +1,5 @@
 package types
 
-// TypeKind describes what kind of Go type was recovered.
 type TypeKind string
 
 const (
@@ -15,14 +14,12 @@ const (
 	KindChan      TypeKind = "chan"
 )
 
-// FieldDescriptor describes a single field in a struct or interface.
 type FieldDescriptor struct {
 	Name   string `json:"name"`
 	Type   string `json:"type"`
 	Offset uint32 `json:"offset"`
 }
 
-// RecoveredType represents a Go type recovered from binary reflection metadata.
 type RecoveredType struct {
 	Name   string            `json:"name"`
 	Kind   TypeKind          `json:"kind"`

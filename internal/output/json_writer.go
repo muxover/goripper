@@ -8,15 +8,12 @@ import (
 	"path/filepath"
 )
 
-// WriteJSON marshals the AnalysisResult to JSON and writes it to w.
 func WriteJSON(result *AnalysisResult, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
 }
 
-// WriteJSONFile writes the AnalysisResult as JSON to a file in outDir.
-// The filename is derived from the binary name.
 func WriteJSONFile(result *AnalysisResult, outDir string) error {
 	base := filepath.Base(result.BinaryInfo.Path)
 	outPath := filepath.Join(outDir, base+".json")

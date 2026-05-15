@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// WriteText writes a human-readable analysis report to w.
 func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 	// Warnings always shown — they signal pipeline failures.
 	if len(result.Warnings) > 0 {
@@ -29,6 +28,9 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 		}
 	}
 
+	if !opts.Quiet && len(result.BinaryInfo.Sections) > 0 {
+		writeSections(result.BinaryInfo.Sections, w)
+	}
 	if !opts.OnlyStrings {
 		writeFunctions(result.Functions, w, opts)
 	}
@@ -44,9 +46,11 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 	if opts.ShowTypes && len(result.Interfaces) > 0 {
 		writeInterfaces(result.Interfaces, w, opts)
 	}
+	if len(result.EmbeddedAssets) > 0 {
+		writeEmbeddedAssets(result.EmbeddedAssets, w, opts)
+	}
 }
 
-// TextOptions controls what the text writer emits.
 type TextOptions struct {
 	NoRuntime     bool
 	OnlyUser      bool
@@ -72,6 +76,9 @@ func writeBinaryInfo(info BinaryInfo, w io.Writer) {
 		fmt.Fprintf(w, "Pclntab:    version=%s  magic=%s\n", info.PclntabVersion, info.PclntabMagic)
 	}
 	fmt.Fprintf(w, "Size:       %d bytes\n", info.SizeBytes)
+	if info.Packer != "" {
+		fmt.Fprintf(w, "Packer:     %s\n", info.Packer)
+	}
 	if info.ObfuscationScore > 0 || info.ObfuscationLevel != "" {
 		level := info.ObfuscationLevel
 		if level == "" {
@@ -106,6 +113,9 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 	fmt.Fprintf(w, "Recovered types:      %d\n", sum.RecoveredTypes)
 	if sum.InterfaceImpls > 0 {
 		fmt.Fprintf(w, "Interface impls:      %d\n", sum.InterfaceImpls)
+	}
+	if sum.EmbeddedAssets > 0 {
+		fmt.Fprintf(w, "Embedded assets:      %d\n", sum.EmbeddedAssets)
 	}
 	if sum.DecryptorStubs > 0 {
 		fmt.Fprintf(w, "Decryptor stubs:      %d  (possible string encryption)\n", sum.DecryptorStubs)
@@ -313,6 +323,25 @@ func writeInterfaces(ifaces []InterfaceImplOutput, w io.Writer, opts TextOptions
 	}
 	for _, it := range ifaces {
 		fmt.Fprintf(w, "  %s  implements  %s  (itab %s)\n", it.Concrete, it.Interface, it.ItabAddr)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeSections(sections []SectionInfo, w io.Writer) {
+	fmt.Fprintf(w, "=== Section Entropy (%d sections) ===\n", len(sections))
+	for _, s := range sections {
+		fmt.Fprintf(w, "  %-20s  size=%-10d  entropy=%.2f  [%s]\n",
+			s.Name, s.Size, s.Entropy, s.Verdict)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeEmbeddedAssets(assets []AssetOutput, w io.Writer, opts TextOptions) {
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Embedded Assets (%d) ===\n", len(assets))
+	}
+	for _, a := range assets {
+		fmt.Fprintf(w, "  %s\n", a.Path)
 	}
 	fmt.Fprintln(w)
 }

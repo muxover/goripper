@@ -2,7 +2,6 @@ package behaviors
 
 import "regexp"
 
-// BehaviorTag is a high-level behavioral classification.
 type BehaviorTag string
 
 const (
@@ -17,7 +16,6 @@ const (
 	TagHTTP      BehaviorTag = "HTTP"
 )
 
-// TagRule defines when a tag applies to a function.
 type TagRule struct {
 	Tag         BehaviorTag
 	CallTargets []string       // tag applies if function calls any of these (prefix match)

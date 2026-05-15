@@ -6,8 +6,7 @@ import (
 	"sort"
 )
 
-// WriteJSONL writes the analysis result as newline-delimited JSON (JSONL / ndjson).
-// Each line is a self-contained JSON object with a "type" discriminator field.
+// Each line is a self-contained JSON object with a "type" discriminator.
 // Emission order: binary_info → functions → strings → behaviors → summary (always last).
 func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 	enc := json.NewEncoder(w)

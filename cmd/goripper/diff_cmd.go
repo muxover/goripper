@@ -155,7 +155,6 @@ func writeDiffText(result *diff.Result, pathA, pathB string, w io.Writer) {
 	}
 }
 
-// resolveWriter returns a writer for outFile (or stdout), plus a cleanup func.
 func resolveWriter(outFile string) (io.Writer, func(), error) {
 	if outFile == "" {
 		return os.Stdout, func() {}, nil
@@ -168,7 +167,6 @@ func resolveWriter(outFile string) (io.Writer, func(), error) {
 	return f, func() { f.Close() }, nil
 }
 
-// writeOutputTo writes analysis output to the given writer.
 func writeOutputTo(result *output.AnalysisResult, w io.Writer, flags commonFlags, textOpts output.TextOptions) error {
 	if flags.jsonOut {
 		return output.WriteJSON(result, w)

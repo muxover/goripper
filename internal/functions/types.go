@@ -1,6 +1,5 @@
 package functions
 
-// PackageKind classifies the origin of a function's package.
 type PackageKind uint8
 
 const (
@@ -25,14 +24,19 @@ func (k PackageKind) String() string {
 	}
 }
 
-// FunctionSource describes where a function's name was obtained.
 type FunctionSource string
 
 const (
-	SourcePclntab     FunctionSource = "pclntab"       // normal: name from gopclntab
-	SourceSymbolTable FunctionSource = "symbol_table"  // name from ELF/PE symbol table fallback
-	SourceSynthetic   FunctionSource = "synthetic"     // generated name: sub_0x<addr>
+	SourcePclntab     FunctionSource = "pclntab"      // normal: name from gopclntab
+	SourceSymbolTable FunctionSource = "symbol_table" // name from ELF/PE symbol table fallback
+	SourceSynthetic   FunctionSource = "synthetic"    // generated name: sub_0x<addr>
 )
+
+type ConstantInfo struct {
+	Value      int64  `json:"value"`
+	Category   string `json:"category"`   // "port", "crypto_key_size", "magic"
+	Confidence string `json:"confidence"` // "high", "medium"
+}
 
 type Function struct {
 	Name         string
@@ -46,6 +50,7 @@ type Function struct {
 	Calls        []string // callee names (populated by callgraph)
 	CalledBy     []string // caller names (populated by callgraph)
 	Strings      []string // referenced strings (populated by string extractor)
-	Tags         []string // behavior tags (populated by tagger)
-	Pseudocode   string   // simplified pseudocode (populated by CFG)
+	Tags         []string       // behavior tags (populated by tagger)
+	Constants    []ConstantInfo // interesting immediates (populated by constants extractor)
+	Pseudocode   string         // simplified pseudocode (populated by CFG)
 }

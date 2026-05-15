@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-15
+
+### Added
+- **Section entropy** (`internal/entropy`): Shannon entropy per section with verdicts (`normal`, `compressed`, `encrypted`, `packed`). Packer detection via section name signatures (`UPX0/1/2`, `MPRESS1/2`, `.packed`, `.themida`). `SectionNames() []string` added to the `Binary` interface and all three loaders (PE, ELF, Mach-O).
+- **Embedded asset detection** (`internal/assets`, `--assets` flag): finds path-like strings referenced by functions that call `embed.*` or `io/fs.*`. Reported as `embedded_assets` in all output formats.
+- **Constant extraction** (`internal/constants`): scans x86_64 function bodies for interesting immediates — ports (known list), magic numbers (PE/ELF/ZIP/PNG/…), and crypto key sizes (16/24/32/48/64, only inside CRYPTO-tagged functions). Skipped on ARM64. Results in `FunctionOutput.constants`.
+- **HTML report** (`--html` flag): self-contained dark-theme HTML with inline SVG entropy bar chart, filterable tables (functions, strings, embedded assets, types), and inline JS — no external dependencies. Mutually exclusive with `--json` and `--jsonl`.
+- **Memory guard** (`--max-memory-mb N`): skips the CFG stage when the binary exceeds N MB and emits a warning. Default `0` = no limit (backward compatible).
+- `ConstantInfo` type on `Function` and `FunctionOutput`; `SectionInfo`, `AssetOutput`, `ConstantOutput` types in `internal/output`; `Packer` field on `BinaryInfo`; `EmbeddedAssets` on `AnalysisResult` and `SummaryOutput`.
+
+### Changed
+- `.rodata` string scanner processes data in 4 MB chunks with 512-byte overlap — keeps peak allocation bounded on large binaries.
+- Comment cleanup across all new packages: removed AI-style docstrings and WHAT comments.
+
 ## [0.2.0] - 2026-04-28
 
 ### Added
@@ -270,7 +284,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/muxover/goripper/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/muxover/goripper/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/muxover/goripper/compare/v0.0.9-pre...v0.1.0
 [0.0.9-pre]: https://github.com/muxover/goripper/compare/v0.0.8-pre...v0.0.9-pre

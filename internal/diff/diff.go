@@ -13,7 +13,6 @@ type FunctionDiff struct {
 	SizeAfter  uint64 `json:"size_after"`
 }
 
-// Result holds the comparison between two analyzed binaries.
 type Result struct {
 	Added        []output.FunctionOutput `json:"added"`
 	Removed      []output.FunctionOutput `json:"removed"`
@@ -22,7 +21,6 @@ type Result struct {
 	NewBehaviors []string                `json:"new_behaviors"`
 }
 
-// Compare computes the diff between two AnalysisResults.
 // a is the baseline (binary1), b is the candidate (binary2).
 func Compare(a, b *output.AnalysisResult) *Result {
 	aFuncs := make(map[string]output.FunctionOutput, len(a.Functions))

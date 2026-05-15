@@ -11,6 +11,9 @@ import (
 
 const minStringLen = 6
 
+// Processing rodata in chunks keeps intermediate allocations bounded on large binaries.
+const scanChunkSize = 4 * 1024 * 1024
+
 func Deduplicate(strs []ExtractedString) []ExtractedString {
 	type key struct {
 		value string
@@ -49,34 +52,45 @@ func Deduplicate(strs []ExtractedString) []ExtractedString {
 }
 
 func Extract(rodataData []byte, rodataVA uint64) []ExtractedString {
+	if len(rodataData) == 0 {
+		return nil
+	}
 	rodataEnd := rodataVA + uint64(len(rodataData))
 	seen := make(map[string]bool)
 	var result []ExtractedString
 
-	for i := 0; i+16 <= len(rodataData); i += 8 {
-		ptr := binary.LittleEndian.Uint64(rodataData[i:])
-		slen := binary.LittleEndian.Uint64(rodataData[i+8:])
+	// Process in scanChunkSize windows with a 512-byte overlap so header pairs
+	// that straddle a chunk boundary are still found by one of the two chunks.
+	for chunkStart := 0; chunkStart < len(rodataData); chunkStart += scanChunkSize {
+		chunkEnd := chunkStart + scanChunkSize + 512
+		if chunkEnd > len(rodataData) {
+			chunkEnd = len(rodataData)
+		}
+		for i := chunkStart; i+16 <= chunkEnd; i += 8 {
+			ptr := binary.LittleEndian.Uint64(rodataData[i:])
+			slen := binary.LittleEndian.Uint64(rodataData[i+8:])
 
-		if ptr < rodataVA || ptr >= rodataEnd {
-			continue
+			if ptr < rodataVA || ptr >= rodataEnd {
+				continue
+			}
+			if slen < uint64(minStringLen) || slen > 4096 {
+				continue
+			}
+			off := ptr - rodataVA
+			if off+slen > uint64(len(rodataData)) {
+				continue
+			}
+			b := rodataData[off : off+slen]
+			if !isPrintableASCII(b) {
+				continue
+			}
+			s := string(b)
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			result = append(result, ExtractedString{Value: s, Offset: ptr})
 		}
-		if slen < uint64(minStringLen) || slen > 4096 {
-			continue
-		}
-		off := ptr - rodataVA
-		if off+slen > uint64(len(rodataData)) {
-			continue
-		}
-		b := rodataData[off : off+slen]
-		if !isPrintableASCII(b) {
-			continue
-		}
-		s := string(b)
-		if seen[s] {
-			continue
-		}
-		seen[s] = true
-		result = append(result, ExtractedString{Value: s, Offset: ptr})
 	}
 	return result
 }

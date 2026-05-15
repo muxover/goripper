@@ -1,6 +1,5 @@
 package callgraph
 
-// CallEdge represents a single CALL instruction from caller to callee.
 type CallEdge struct {
 	Caller   string
 	Callee   string
@@ -8,14 +7,12 @@ type CallEdge struct {
 	Resolved bool   // false if target address could not be mapped to a name
 }
 
-// CallGraph holds all call edges and adjacency maps for fast traversal.
 type CallGraph struct {
 	Edges    []CallEdge
 	Calls    map[string][]string // caller -> []callee (direct calls only)
 	CalledBy map[string][]string // callee -> []caller
 }
 
-// NewCallGraph creates an empty call graph.
 func NewCallGraph() *CallGraph {
 	return &CallGraph{
 		Calls:    make(map[string][]string),
@@ -23,7 +20,6 @@ func NewCallGraph() *CallGraph {
 	}
 }
 
-// AddEdge adds a resolved call edge to the graph.
 func (g *CallGraph) AddEdge(edge CallEdge) {
 	g.Edges = append(g.Edges, edge)
 	if !edge.Resolved {

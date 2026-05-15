@@ -26,7 +26,6 @@ func (v PclntabVersion) String() string {
 	}
 }
 
-// FuncEntry is one parsed row from the function table.
 type FuncEntry struct {
 	Name    string // null-terminated name from funcnametab
 	EntryPC uint64 // resolved virtual address
@@ -34,7 +33,6 @@ type FuncEntry struct {
 	NameOff uint32 // raw offset into funcnametab (for debug)
 }
 
-// ParsedPclntab is the output of a successful parse.
 type ParsedPclntab struct {
 	Version   PclntabVersion
 	GoVersion string     // inferred version range from magic

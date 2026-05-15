@@ -44,7 +44,7 @@ binary file
          ▼
 ┌─────────────────┐
 │      CFG        │  basic block splitting + pseudocode emission (--cfg only)
-└────────┬────────┘
+└────────┬────────┘  skipped when binary.Size() > MaxMemoryMB * 1024 * 1024
          │
          ▼
 ┌─────────────────┐
@@ -63,12 +63,27 @@ binary file
          │
          ▼
 ┌─────────────────┐
+│   constants     │  per-function immediate scan: ports, magic numbers, key sizes
+└────────┬────────┘  x86_64 only; runs after behaviors so CRYPTO tag is set
+         │
+         ▼
+┌─────────────────┐
 │  obfuscation    │  entropy + prefix ratio + string density → 0.0–1.0 score
 └────────┬────────┘       → decryptor stub detection → XOR key recovery → relabel
          │
          ▼
 ┌─────────────────┐
-│  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text
+│    entropy      │  Shannon entropy per section → verdict; packer name detection
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│    assets       │  embed/io/fs callgraph → embedded file path detection (--assets)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text / HTML
 └─────────────────┘
 ```
 
@@ -89,8 +104,11 @@ binary file
 | concurrency | `internal/concurrency` | Goroutine / channel / sync pattern detection | `ConcurrencyPattern` |
 | behaviors | `internal/behaviors` | Rule-based behavior tagging, CGo boundary mapping | `Rule`, `Tag` |
 | obfuscation | `internal/obfuscation` | Garble scoring, decryptor stub detection, XOR recovery | `Result`, `StubMatch` |
+| entropy | `internal/entropy` | Shannon entropy per section; packer signature detection | `SectionInfo` |
+| assets | `internal/assets` | Embedded asset path detection via callgraph | `EmbeddedAsset` |
+| constants | `internal/constants` | Per-function interesting-immediate extraction (x86_64) | `ConstantInfo` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
-| output | `internal/output` | JSON, JSONL, and text writers | `AnalysisResult`, `TextOptions` |
+| output | `internal/output` | JSON, JSONL, text, and HTML writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
 | version | `internal/version` | Build-time version vars (ldflags injection) | `Version`, `Commit`, `Date` |
 
@@ -107,10 +125,13 @@ internal/callgraph.CallGraph      →  map[string][]string
 internal/types.RecoveredType      →  output.TypeOutput
 internal/types.InterfaceImpl      →  output.InterfaceImplOutput
 internal/obfuscation.StubMatch    →  output.DecryptorStubOutput
+internal/entropy.SectionInfo      →  output.SectionInfo  (+ BinaryInfo.Packer)
+internal/assets.EmbeddedAsset     →  output.AssetOutput
+internal/functions.ConstantInfo   →  output.ConstantOutput  (nested in FunctionOutput)
 (aggregated counts)               →  output.SummaryOutput
 ```
 
-`AnalysisResult` is the only thing that crosses the `internal/` boundary into `cmd/` and `pkg/`. All three output writers (`WriteJSON`, `WriteJSONL`, `WriteText`) consume it.
+`AnalysisResult` is the only thing that crosses the `internal/` boundary into `cmd/` and `pkg/`. All four output writers (`WriteJSON`, `WriteJSONL`, `WriteText`, `WriteHTML`) consume it.
 
 ---
 
@@ -128,6 +149,7 @@ type Binary interface {
     Size() int64
     Section(name string) ([]byte, error)
     SectionVA(name string) (uint64, error)
+    SectionNames() []string
     TextSectionRange() (uint64, uint64, error)
     FindGopclntab() ([]byte, uint64, error)
     Close() error
@@ -166,6 +188,8 @@ type Instr struct {
 
 String extraction runs in three passes:
 
+`.rodata` is scanned in 4 MB chunks with a 512-byte overlap between adjacent chunks, keeping peak allocation bounded on large binaries without affecting extraction results.
+
 **Pass 1 — header pairs:** Scans `.rodata` for Go string header `(ptr, len)` pairs. A valid header has a pointer into `.rodata` and a length in `[6, 4096]`.
 
 **Pass 2 — disassembler cross-reference:** Decodes `.text` using the arch-neutral `Disassembler`, looking for `OpAddrLoad` instructions (LEA on x86, ADRP+ADD/ADR on ARM64) that point into `.rodata`. For x86, scans ±30 instructions for a `MOV reg, imm` to infer exact string length; ARM64 length inference is skipped (ADRP addresses are typically passed with explicit length args).
@@ -185,6 +209,39 @@ Type recovery runs in two parts when `--types` is enabled:
 **rtype recovery:** Scans `.typelinks` (ELF/Mach-O) for `int32` offsets into `.rodata` pointing at `rtype` descriptors. For each rtype, reads the 48-byte header, extracts the type name (via `nameOff`), and for struct kinds additionally parses the `structType` layout to extract field names, types, and byte offsets.
 
 **Itab recovery:** Reads the `.itablink` section, which contains an array of pointers to `itab` structs. Each itab holds a pointer to an `interfacetype` and a pointer to the concrete `rtype`. Both are resolved to type names, producing `InterfaceImpl{Interface, Concrete, ItabAddr}` records. These appear in `AnalysisResult.Interfaces`.
+
+---
+
+## Section Entropy
+
+`internal/entropy.Calculate(data)` computes Shannon entropy H = -Σ p·log₂(p) over the byte frequency distribution. `Verdict(H)` maps the result:
+
+| Range | Verdict |
+|-------|---------|
+| H < 1.0 | `packed` |
+| H ≤ 6.5 | `normal` |
+| H ≤ 7.2 | `compressed` |
+| H > 7.2 | `encrypted` |
+
+`DetectPacker(sectionNames)` checks for known packer section name signatures (`UPX0/1/2`, `MPRESS1/2`, `.packed`, `.themida`) and returns a packer label when found.
+
+---
+
+## Constant Extraction
+
+`internal/constants.Extract` runs on x86_64 user functions **after** behavior tagging so the `CRYPTO` tag is already set. It decodes each instruction and checks immediates against three tables:
+
+- **port** — known network ports (21, 22, 80, 443, 4444, 31337, …)
+- **magic** — known binary magic numbers (PE `0x5A4D`, ELF `0x7F454C46`, ZIP `0x504B0304`, …)
+- **crypto_key_size** — AES/SHA key sizes (16, 24, 32, 48, 64) — only emitted when the function carries the `CRYPTO` tag
+
+ARM64 is explicitly skipped: ADRP immediates and other ARM64 encoded values are not reliably distinguishable from normal arithmetic without full semantic analysis.
+
+---
+
+## Embedded Asset Detection
+
+`internal/assets.Detect` takes the full string list and the call graph. It first identifies functions that call into `embed.*` or `io/fs.*` (the `findEmbedUsers` pass), then filters strings to those that look like file paths (has extension, not absolute, no shell-special chars, 4–256 chars) and are referenced by one of those embed-using functions.
 
 ---
 

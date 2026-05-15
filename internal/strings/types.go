@@ -1,6 +1,5 @@
 package strings
 
-// StringType classifies what kind of string was extracted.
 type StringType string
 
 const (
@@ -12,7 +11,6 @@ const (
 	StringTypePlain   StringType = "plain"
 )
 
-// ExtractedString is a string found in the binary with metadata.
 type ExtractedString struct {
 	Value          string
 	Type           StringType

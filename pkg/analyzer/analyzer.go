@@ -7,11 +7,14 @@ import (
 	"sort"
 
 	gobinary "github.com/muxover/goripper/internal/binary"
+	"github.com/muxover/goripper/internal/assets"
 	"github.com/muxover/goripper/internal/behaviors"
 	"github.com/muxover/goripper/internal/callgraph"
 	"github.com/muxover/goripper/internal/cfg"
 	"github.com/muxover/goripper/internal/concurrency"
+	"github.com/muxover/goripper/internal/constants"
 	"github.com/muxover/goripper/internal/disasm"
+	"github.com/muxover/goripper/internal/entropy"
 	"github.com/muxover/goripper/internal/functions"
 	"github.com/muxover/goripper/internal/gopclntab"
 	"github.com/muxover/goripper/internal/obfuscation"
@@ -32,6 +35,9 @@ type Analyzer struct {
 	rtypes     []gtypes.RecoveredType
 	itabs      []gtypes.InterfaceImpl
 	concurrent []concurrency.ConcurrencyPattern
+	sections   []entropy.SectionInfo
+	packer     string
+	embAssets  []assets.EmbeddedAsset
 
 	obfResult      obfuscation.Result
 	decryptorStubs []obfuscation.StubMatch
@@ -50,7 +56,7 @@ func New(opts Options) *Analyzer {
 	}
 }
 
-// Run executes the analysis pipeline. Load is fatal; all other stages are crash-safe.
+// Load is fatal; all other stages are crash-safe via safeRun.
 func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 	if a.opts.Verbose {
 		log.Printf("[*] load binary...")
@@ -63,6 +69,7 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 		name string
 		fn   func() error
 	}{
+		{"analyze sections", a.analyzeSections},
 		{"parse pclntab", a.parsePclntab},
 		{"extract functions", a.extractFunctions},
 		{"extract strings", a.extractStrings},
@@ -71,6 +78,8 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 		{"recover types", a.recoverTypes},
 		{"detect concurrency", a.detectConcurrency},
 		{"tag behaviors", a.tagBehaviors},
+		{"extract constants", a.extractConstants},
+		{"detect assets", a.detectAssets},
 		{"detect obfuscation", a.detectObfuscation},
 	}
 
@@ -301,6 +310,12 @@ func (a *Analyzer) buildCFGs() error {
 	if !a.opts.CFGEnabled {
 		return nil
 	}
+	if a.opts.MaxMemoryMB > 0 && a.binary.Size() > int64(a.opts.MaxMemoryMB)*1024*1024 {
+		a.warnings = append(a.warnings,
+			fmt.Sprintf("skipping CFG stage — binary (%d MB) exceeds --max-memory-mb %d",
+				a.binary.Size()/(1024*1024), a.opts.MaxMemoryMB))
+		return nil
+	}
 	textData, err := a.binary.Section(".text")
 	if err != nil {
 		return nil
@@ -390,6 +405,55 @@ func (a *Analyzer) detectObfuscation() error {
 	return nil
 }
 
+func (a *Analyzer) analyzeSections() error {
+	names := a.binary.SectionNames()
+	a.packer = entropy.DetectPacker(names)
+	for _, name := range names {
+		data, err := a.binary.Section(name)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		e := entropy.Calculate(data)
+		a.sections = append(a.sections, entropy.SectionInfo{
+			Name:    name,
+			Entropy: e,
+			Size:    uint64(len(data)),
+			Verdict: entropy.Verdict(e),
+		})
+	}
+	return nil
+}
+
+func (a *Analyzer) extractConstants() error {
+	if a.disasm.Arch() != "x86_64" {
+		return nil
+	}
+	textData, err := a.binary.Section(".text")
+	if err != nil {
+		return nil
+	}
+	textVA, _ := a.binary.SectionVA(".text")
+
+	for i, fn := range a.funcs {
+		if fn.PackageKind != functions.PackageUser {
+			continue
+		}
+		consts := constants.Extract(fn, textData, textVA)
+		if len(consts) > 0 {
+			a.funcs[i].Constants = consts
+		}
+	}
+	return nil
+}
+
+func (a *Analyzer) detectAssets() error {
+	if !a.opts.AssetsEnabled || a.graph == nil {
+		return nil
+	}
+	a.embAssets = assets.Detect(a.strs, a.graph.Calls)
+	return nil
+}
+
 func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	result := &output.AnalysisResult{
 		Warnings: nilSafe(a.warnings),
@@ -414,6 +478,16 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 			pclntabMagic = "0xFFFFFFF1"
 		}
 	}
+	sectionOut := make([]output.SectionInfo, 0, len(a.sections))
+	for _, s := range a.sections {
+		sectionOut = append(sectionOut, output.SectionInfo{
+			Name:    s.Name,
+			Entropy: s.Entropy,
+			Size:    s.Size,
+			Verdict: s.Verdict,
+		})
+	}
+
 	result.BinaryInfo = output.BinaryInfo{
 		Path:                  a.binary.Path(),
 		Format:                a.binary.Format(),
@@ -422,6 +496,8 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		PclntabVersion:        pclntabVer,
 		PclntabMagic:          pclntabMagic,
 		SizeBytes:             a.binary.Size(),
+		Packer:                a.packer,
+		Sections:              sectionOut,
 		ObfuscationScore:      a.obfResult.Score,
 		ObfuscationLevel:      a.obfResult.Level,
 		ObfuscationIndicators: a.obfResult.Indicators,
@@ -429,7 +505,7 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 
 	result.Functions = make([]output.FunctionOutput, 0, len(a.funcs))
 	for _, fn := range a.funcs {
-		result.Functions = append(result.Functions, output.FunctionOutput{
+		fo := output.FunctionOutput{
 			Name:           fn.Name,
 			Addr:           fmt.Sprintf("0x%x", fn.Addr),
 			Package:        fn.Package,
@@ -443,7 +519,18 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 			IsRuntime:      fn.IsRuntime,
 			IsConcurrent:   fn.IsConcurrent,
 			Pseudocode:     fn.Pseudocode,
-		})
+		}
+		if len(fn.Constants) > 0 {
+			fo.Constants = make([]output.ConstantOutput, len(fn.Constants))
+			for i, c := range fn.Constants {
+				fo.Constants[i] = output.ConstantOutput{
+					Value:      c.Value,
+					Category:   c.Category,
+					Confidence: c.Confidence,
+				}
+			}
+		}
+		result.Functions = append(result.Functions, fo)
 	}
 
 	result.Strings = make([]output.StringOutput, 0, len(a.strs))
@@ -485,6 +572,14 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		})
 	}
 
+	result.EmbeddedAssets = make([]output.AssetOutput, 0, len(a.embAssets))
+	for _, ea := range a.embAssets {
+		result.EmbeddedAssets = append(result.EmbeddedAssets, output.AssetOutput{
+			Path:     ea.Path,
+			SizeHint: ea.SizeHint,
+		})
+	}
+
 	result.DecryptorStubs = make([]output.DecryptorStubOutput, 0, len(a.decryptorStubs))
 	for _, s := range a.decryptorStubs {
 		dso := output.DecryptorStubOutput{
@@ -502,6 +597,7 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		TotalFunctions: len(a.funcs),
 		RecoveredTypes: len(a.rtypes),
 		InterfaceImpls: len(a.itabs),
+		EmbeddedAssets: len(a.embAssets),
 		DecryptorStubs: len(a.decryptorStubs),
 		CgoCallSites:   nilSafe(a.cgoCallSites),
 	}

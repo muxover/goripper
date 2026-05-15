@@ -1,6 +1,5 @@
 package concurrency
 
-// PatternKind describes what kind of concurrency pattern was detected.
 type PatternKind string
 
 const (
@@ -15,7 +14,6 @@ const (
 	PatternAtomicOp       PatternKind = "atomic"
 )
 
-// ConcurrencyPattern is a detected concurrency usage within a function.
 type ConcurrencyPattern struct {
 	Kind     PatternKind
 	FuncName string // function in which the pattern was detected

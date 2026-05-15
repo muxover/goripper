@@ -64,7 +64,6 @@ var stdlibPrefixes = []string{
 	"expvar",
 }
 
-// Classify assigns PackageKind and IsRuntime to each function.
 func Classify(funcs []Function) []Function {
 	result := make([]Function, len(funcs))
 	for i, f := range funcs {
@@ -85,7 +84,6 @@ func classifyPackage(pkg string) PackageKind {
 		return PackageCGo
 	}
 
-	// Check runtime prefixes
 	for _, prefix := range runtimePrefixes {
 		if pkg == prefix || strings.HasPrefix(pkg, prefix+"/") || strings.HasPrefix(pkg, prefix+".") {
 			return PackageRuntime
@@ -97,7 +95,6 @@ func classifyPackage(pkg string) PackageKind {
 		return PackageRuntime
 	}
 
-	// Check stdlib prefixes
 	for _, prefix := range stdlibPrefixes {
 		if pkg == prefix || strings.HasPrefix(pkg, prefix+"/") || strings.HasPrefix(pkg, prefix+".") {
 			return PackageStdlib
@@ -113,7 +110,6 @@ func classifyPackage(pkg string) PackageKind {
 	return PackageUser
 }
 
-// IsRuntimePackage returns true for packages considered part of the Go runtime.
 func IsRuntimePackage(pkg string) bool {
 	return classifyPackage(pkg) == PackageRuntime
 }

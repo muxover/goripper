@@ -129,6 +129,14 @@ func (b *MachoBinary) ImageBase() uint64 {
 	return 0
 }
 
+func (b *MachoBinary) SectionNames() []string {
+	names := make([]string, 0, len(b.file.Sections))
+	for _, s := range b.file.Sections {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
 func (b *MachoBinary) GoVersion() string { return b.goVersion }
 func (b *MachoBinary) Format() string    { return "Mach-O" }
 func (b *MachoBinary) Arch() string      { return b.arch }
@@ -166,7 +174,6 @@ func (b *MachoBinary) Close() error {
 	return b.file.Close()
 }
 
-// TypeLinks returns the .typelinks section for type recovery.
 func (b *MachoBinary) TypeLinks() ([]byte, uint64, error) {
 	s := b.file.Section("__typelinks")
 	if s == nil {

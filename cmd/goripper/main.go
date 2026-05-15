@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// quietFlag is a persistent root flag inherited by all subcommands.
 var quietFlag bool
 
 func main() {
@@ -49,8 +48,6 @@ intelligence: function names, call graph, strings, type info, and more.`,
 	return root
 }
 
-// --- Shared flags helpers ---
-
 type commonFlags struct {
 	jsonOut   bool
 	noRuntime bool
@@ -69,8 +66,6 @@ func addCommonFlags(cmd *cobra.Command, f *commonFlags) {
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "verbose logging")
 }
 
-// --- analyze command ---
-
 func newAnalyzeCmd() *cobra.Command {
 	var flags commonFlags
 	var minLen int
@@ -78,7 +73,10 @@ func newAnalyzeCmd() *cobra.Command {
 	var minRefs int
 	var showRefs bool
 	var jsonlOut bool
+	var htmlOut bool
 	var maxFunctions int
+	var maxMemoryMB int
+	var assetsEnabled bool
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -86,17 +84,18 @@ func newAnalyzeCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := analyzer.Options{
-				BinaryPath:   args[0],
-				NoRuntime:    flags.noRuntime,
-				OnlyUser:     flags.onlyUser,
-	
-				Verbose:      flags.verbose,
-				JSONOutput:   flags.jsonOut,
-				CFGEnabled:   flags.cfgMode,
-				TypesEnabled: flags.typeMode,
-				MinStringLen: minLen,
-				NoPlain:      noPlain,
-				MinRefs:      minRefs,
+				BinaryPath:    args[0],
+				NoRuntime:     flags.noRuntime,
+				OnlyUser:      flags.onlyUser,
+				Verbose:       flags.verbose,
+				JSONOutput:    flags.jsonOut,
+				CFGEnabled:    flags.cfgMode,
+				TypesEnabled:  flags.typeMode,
+				AssetsEnabled: assetsEnabled,
+				MinStringLen:  minLen,
+				NoPlain:       noPlain,
+				MinRefs:       minRefs,
+				MaxMemoryMB:   maxMemoryMB,
 			}
 
 			result, err := runAnalysis(opts)
@@ -111,6 +110,15 @@ func newAnalyzeCmd() *cobra.Command {
 				}
 				defer cleanup()
 				return output.WriteJSONL(w, result)
+			}
+
+			if htmlOut {
+				w, cleanup, err := resolveWriter(flags.outFile)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				return output.WriteHTML(result, w)
 			}
 
 			return writeOutput(result, flags, output.TextOptions{
@@ -128,18 +136,21 @@ func newAnalyzeCmd() *cobra.Command {
 	addCommonFlags(cmd, &flags)
 	cmd.Flags().BoolVar(&flags.cfgMode, "cfg", false, "generate pseudocode for each function (slow)")
 	cmd.Flags().BoolVar(&flags.typeMode, "types", false, "recover Go type information")
+	cmd.Flags().BoolVar(&assetsEnabled, "assets", false, "detect embedded assets (embed.FS)")
 	cmd.Flags().IntVar(&minLen, "min-len", 0, "minimum string length (default 6)")
 	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
 	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
 	cmd.Flags().BoolVar(&showRefs, "show-refs", false, "show referencing functions per string")
 	cmd.Flags().BoolVar(&jsonlOut, "jsonl", false, "output as newline-delimited JSON (JSONL)")
+	cmd.Flags().BoolVar(&htmlOut, "html", false, "write a self-contained HTML report")
 	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
+	cmd.Flags().IntVar(&maxMemoryMB, "max-memory-mb", 0, "skip memory-intensive stages when binary exceeds N MB (0 = no limit)")
 	cmd.MarkFlagsMutuallyExclusive("json", "jsonl")
+	cmd.MarkFlagsMutuallyExclusive("json", "html")
+	cmd.MarkFlagsMutuallyExclusive("jsonl", "html")
 
 	return cmd
 }
-
-// --- functions command ---
 
 func newFunctionsCmd() *cobra.Command {
 	var flags commonFlags
@@ -188,8 +199,6 @@ func newFunctionsCmd() *cobra.Command {
 
 	return cmd
 }
-
-// --- strings command ---
 
 func newStringsCmd() *cobra.Command {
 	var flags commonFlags
@@ -248,8 +257,6 @@ func newStringsCmd() *cobra.Command {
 	return cmd
 }
 
-// --- callgraph command ---
-
 func newCallgraphCmd() *cobra.Command {
 	var flags commonFlags
 	var depth int
@@ -291,8 +298,6 @@ func newCallgraphCmd() *cobra.Command {
 
 	return cmd
 }
-
-// --- helpers ---
 
 func runAnalysis(opts analyzer.Options) (*output.AnalysisResult, error) {
 	a := analyzer.New(opts)

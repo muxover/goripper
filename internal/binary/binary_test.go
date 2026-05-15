@@ -209,8 +209,6 @@ func TestOpen_NonBinary_ReturnsError(t *testing.T) {
 	}
 }
 
-// --- ELF fixture tests (platform-agnostic: debug/elf parses on any OS) ---
-
 func TestELFFixture_Open(t *testing.T) {
 	path := elfFixture(t)
 	bin, err := binary.Open(path)

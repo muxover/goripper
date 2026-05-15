@@ -9,6 +9,7 @@ import (
 type Binary interface {
 	Section(name string) ([]byte, error)
 	SectionVA(name string) (uint64, error)
+	SectionNames() []string
 	TextSectionRange() (uint64, uint64, error)
 	ImageBase() uint64
 	GoVersion() string

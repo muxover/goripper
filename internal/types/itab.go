@@ -12,7 +12,6 @@ type InterfaceImpl struct {
 	ItabAddr  uint64 `json:"itab_addr"`
 }
 
-// RecoverItabs reads the .itablink section to recover interface-to-type bindings.
 // Each entry in .itablink is a pointer to an itab struct:
 //
 //	itab { inter *interfacetype; _type *_type; hash uint32; _ [4]byte; fun [1]uintptr }

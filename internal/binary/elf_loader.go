@@ -91,6 +91,14 @@ func (b *ELFBinary) ImageBase() uint64 {
 	return 0
 }
 
+func (b *ELFBinary) SectionNames() []string {
+	names := make([]string, 0, len(b.file.Sections))
+	for _, s := range b.file.Sections {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
 func (b *ELFBinary) GoVersion() string { return b.goVersion }
 func (b *ELFBinary) Format() string    { return "ELF" }
 func (b *ELFBinary) Arch() string      { return b.arch }

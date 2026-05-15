@@ -16,7 +16,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.2.0` — ARM64 support, Mach-O loader, arch-neutral disassembler abstraction, struct field recovery, and interface implementation recovery from `.itablink`.
+> **Status:** `v0.3.0` — Section entropy, embedded asset detection, constant extraction, HTML report, and memory-bounded scanning.
 
 ---
 
@@ -37,7 +37,11 @@ GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without sour
 - **Concurrency Detection** — Identifies goroutine spawns, channel operations, and mutex usage via call graph patterns.
 - **Behavior Tagging** — Tags functions with `NETWORK`, `CRYPTO`, `FILE_WRITE`, `FILE_READ`, `EXEC`, `REGISTRY`, `HTTP`, `DNS`, and more.
 - **CFG + Pseudocode** — Builds basic-block control flow graphs and emits simplified pseudocode per function (optional, slow on large binaries).
-- **JSON + JSONL + Text Output** — Machine-readable JSON, streaming JSONL for pipelines, or analyst-friendly tabular text.
+- **Section Entropy** — Shannon entropy per section with packed/compressed/encrypted verdicts; packer signature detection (UPX, MPRESS).
+- **Embedded Asset Detection** — Finds embedded file paths via callgraph-guided string matching against `embed.*` and `io/fs.*` callers.
+- **Constant Extraction** — Flags interesting immediates (network ports, binary magic numbers, crypto key sizes) per function (x86_64).
+- **HTML Report** — Self-contained dark-theme HTML with inline SVG entropy chart and filterable tables; no external dependencies.
+- **JSON + JSONL + Text + HTML Output** — Machine-readable JSON, streaming JSONL for pipelines, analyst-friendly tabular text, or self-contained HTML.
 
 ---
 
@@ -145,11 +149,14 @@ Recovered types:      203
 |------|---------|-------------|
 | `--json` | `false` | Emit JSON |
 | `--jsonl` | `false` | Emit newline-delimited JSON (streaming; mutually exclusive with `--json`) |
+| `--html` | `false` | Emit self-contained HTML report (mutually exclusive with `--json`/`--jsonl`) |
 | `--no-runtime` | `false` | Exclude runtime functions from output |
 | `--only-user` | `false` | Show only user-written package functions |
 | `--max-functions N` | `0` | Cap function list at N entries (0 = unlimited) |
 | `--cfg` | `false` | Build CFG and emit pseudocode (slow on large binaries) |
 | `--types` | `false` | Run type recovery from runtime `rtype` descriptors |
+| `--assets` | `false` | Detect embedded asset paths via embed/io/fs callgraph |
+| `--max-memory-mb N` | `0` | Skip CFG stage when binary exceeds N MB (0 = no limit) |
 | `--min-len N` | `0` | Drop strings shorter than N bytes |
 | `--no-plain` | `false` | Suppress plain-text strings from output |
 | `--min-refs N` | `0` | Drop strings with fewer than N user-code references |
@@ -233,8 +240,11 @@ goripper/
     ├── concurrency/       # Goroutine/channel pattern detection
     ├── behaviors/         # Behavior tag rules (NETWORK, CRYPTO, EXEC, etc.)
     ├── obfuscation/       # Garble/obfuscation scoring and relabeling
+    ├── entropy/           # Per-section Shannon entropy + packer detection
+    ├── assets/            # Embedded asset path detection via callgraph
+    ├── constants/         # Interesting immediate extraction (ports, magic numbers, crypto sizes)
     ├── version/           # Version vars (injected via ldflags at release)
-    └── output/            # JSON, JSONL, and text report writers
+    └── output/            # JSON, JSONL, text, and HTML report writers
 ```
 
 ---
@@ -264,6 +274,7 @@ Licensed under the [Apache-2.0](LICENSE) license.
 - Repository: https://github.com/muxover/goripper
 - Issues: https://github.com/muxover/goripper/issues
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Go Reference: https://pkg.go.dev/github.com/muxover/goripper
 
 ---
 

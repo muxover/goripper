@@ -17,7 +17,7 @@ Thank you for your interest in contributing!
 ## Getting started
 
 **Requirements:**
-- Go 1.24 or later
+- Go 1.25 or later
 - Git
 
 ```bash
