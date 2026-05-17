@@ -7,7 +7,7 @@ import (
 )
 
 // Each line is a self-contained JSON object with a "type" discriminator.
-// Emission order: binary_info → functions → strings → behaviors → summary (always last).
+// Emission order: binary_info → functions → strings → behaviors → taint_flow (if any) → summary (always last).
 func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 	enc := json.NewEncoder(w)
 
@@ -78,7 +78,22 @@ func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 		}
 	}
 
-	// 5. summary — always last
+	// 5. taint flows (only if present)
+	for _, tf := range result.TaintFlows {
+		if err := enc.Encode(map[string]any{
+			"type":        "taint_flow",
+			"source":      tf.Source,
+			"source_func": tf.SourceFunc,
+			"sink":        tf.Sink,
+			"sink_func":   tf.SinkFunc,
+			"path":        tf.Path,
+			"confidence":  tf.Confidence,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// 6. summary — always last
 	return enc.Encode(map[string]any{
 		"type":              "summary",
 		"total_functions":   result.Summary.TotalFunctions,
@@ -90,5 +105,9 @@ func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 		"ip_strings":        result.Summary.IPStrings,
 		"path_strings":      result.Summary.PathStrings,
 		"secret_strings":    result.Summary.SecretStrings,
+		"taint_flows":       result.Summary.TaintFlows,
+		"threat_class":      result.Summary.ThreatClass,
+		"threat_confidence": result.Summary.ThreatConfidence,
+		"threat_indicators": result.Summary.ThreatIndicators,
 	})
 }

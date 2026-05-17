@@ -67,7 +67,7 @@ var machoSectionMap = map[string][]string{
 	".text":      {"__text"},
 	".rodata":    {"__rodata", "__const"},
 	".gopclntab": {"__gopclntab"},
-	".typelinks":  {"__typelinks"},
+	".typelinks": {"__typelinks"},
 	".itablink":  {"__itablink"},
 	".noptrdata": {"__noptrdata"},
 	".data":      {"__data"},

@@ -11,8 +11,8 @@ import (
 // when 2+ non-blob strings start inside its byte range.
 func TestSuppressBlobs_RemovesCoveredBlob(t *testing.T) {
 	blob := gstrings.ExtractedString{Value: "hello world foo bar baz", Offset: 0x1000, IsFallbackBlob: true}
-	comp1 := gstrings.ExtractedString{Value: "world", Offset: 0x1006}  // inside blob
-	comp2 := gstrings.ExtractedString{Value: "foo", Offset: 0x100C}    // inside blob
+	comp1 := gstrings.ExtractedString{Value: "world", Offset: 0x1006} // inside blob
+	comp2 := gstrings.ExtractedString{Value: "foo", Offset: 0x100C}   // inside blob
 	input := []gstrings.ExtractedString{blob, comp1, comp2}
 	result := gstrings.SuppressBlobs(input)
 	for _, s := range result {

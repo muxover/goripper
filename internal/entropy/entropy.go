@@ -43,11 +43,11 @@ func Verdict(e float64) string {
 }
 
 var packerSignatures = map[string]string{
-	"UPX0":    "UPX",
-	"UPX1":    "UPX",
-	"UPX2":    "UPX",
-	"MPRESS1": "MPRESS",
-	"MPRESS2": "MPRESS",
+	"UPX0":     "UPX",
+	"UPX1":     "UPX",
+	"UPX2":     "UPX",
+	"MPRESS1":  "MPRESS",
+	"MPRESS2":  "MPRESS",
 	".packed":  "unknown_packer",
 	".themida": "unknown_packer",
 }

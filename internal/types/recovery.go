@@ -78,17 +78,19 @@ func tryTypelinks(bin gobinary.Binary, rodataData []byte, rodataVA uint64, order
 }
 
 // reflect.rtype layout (Go 1.18+, 64-bit):
-//   [0:8]   size        uintptr
-//   [8:16]  ptrdata     uintptr
-//   [16:20] hash        uint32
-//   [20]    tflag       uint8
-//   [21]    align       uint8
-//   [22]    fieldAlign  uint8
-//   [23]    kind_       uint8
-//   [24:32] equal       uintptr (func pointer)
-//   [32:40] gcdata      uintptr (pointer)
-//   [40:44] str         int32   (nameOff into .rodata)
-//   [44:48] ptrToThis   int32
+//
+//	[0:8]   size        uintptr
+//	[8:16]  ptrdata     uintptr
+//	[16:20] hash        uint32
+//	[20]    tflag       uint8
+//	[21]    align       uint8
+//	[22]    fieldAlign  uint8
+//	[23]    kind_       uint8
+//	[24:32] equal       uintptr (func pointer)
+//	[32:40] gcdata      uintptr (pointer)
+//	[40:44] str         int32   (nameOff into .rodata)
+//	[44:48] ptrToThis   int32
+//
 // Total: 48 bytes
 const rtypeSize = 48
 

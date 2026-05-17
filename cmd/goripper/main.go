@@ -33,6 +33,7 @@ intelligence: function names, call graph, strings, type info, and more.`,
 	stringsCmd := newStringsCmd()
 	callgraphCmd := newCallgraphCmd()
 	diffCmd := newDiffCmd()
+	yaraCmd := newYaraCmd()
 
 	root.AddCommand(
 		analyzeCmd,
@@ -40,6 +41,7 @@ intelligence: function names, call graph, strings, type info, and more.`,
 		stringsCmd,
 		callgraphCmd,
 		diffCmd,
+		yaraCmd,
 		newVersionCmd(),
 	)
 
@@ -74,9 +76,12 @@ func newAnalyzeCmd() *cobra.Command {
 	var showRefs bool
 	var jsonlOut bool
 	var htmlOut bool
+	var idaOut bool
+	var ghidraOut bool
 	var maxFunctions int
 	var maxMemoryMB int
 	var assetsEnabled bool
+	var taintEnabled bool
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -92,6 +97,7 @@ func newAnalyzeCmd() *cobra.Command {
 				CFGEnabled:    flags.cfgMode,
 				TypesEnabled:  flags.typeMode,
 				AssetsEnabled: assetsEnabled,
+				TaintEnabled:  taintEnabled,
 				MinStringLen:  minLen,
 				NoPlain:       noPlain,
 				MinRefs:       minRefs,
@@ -121,6 +127,24 @@ func newAnalyzeCmd() *cobra.Command {
 				return output.WriteHTML(result, w)
 			}
 
+			if idaOut {
+				w, cleanup, err := resolveWriter(flags.outFile)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				return output.WriteIDA(result, w)
+			}
+
+			if ghidraOut {
+				w, cleanup, err := resolveWriter(flags.outFile)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				return output.WriteGhidra(result, w)
+			}
+
 			return writeOutput(result, flags, output.TextOptions{
 				NoRuntime:    flags.noRuntime,
 				OnlyUser:     flags.onlyUser,
@@ -137,17 +161,27 @@ func newAnalyzeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&flags.cfgMode, "cfg", false, "generate pseudocode for each function (slow)")
 	cmd.Flags().BoolVar(&flags.typeMode, "types", false, "recover Go type information")
 	cmd.Flags().BoolVar(&assetsEnabled, "assets", false, "detect embedded assets (embed.FS)")
+	cmd.Flags().BoolVar(&taintEnabled, "taint", false, "run inter-procedural taint analysis")
 	cmd.Flags().IntVar(&minLen, "min-len", 0, "minimum string length (default 6)")
 	cmd.Flags().BoolVar(&noPlain, "no-plain", false, "suppress plain-text strings")
 	cmd.Flags().IntVar(&minRefs, "min-refs", 0, "minimum user-code reference count")
 	cmd.Flags().BoolVar(&showRefs, "show-refs", false, "show referencing functions per string")
 	cmd.Flags().BoolVar(&jsonlOut, "jsonl", false, "output as newline-delimited JSON (JSONL)")
 	cmd.Flags().BoolVar(&htmlOut, "html", false, "write a self-contained HTML report")
+	cmd.Flags().BoolVar(&idaOut, "ida", false, "emit an IDAPython rename script")
+	cmd.Flags().BoolVar(&ghidraOut, "ghidra", false, "emit a GhidraScript (Java) rename script")
 	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
 	cmd.Flags().IntVar(&maxMemoryMB, "max-memory-mb", 0, "skip memory-intensive stages when binary exceeds N MB (0 = no limit)")
 	cmd.MarkFlagsMutuallyExclusive("json", "jsonl")
 	cmd.MarkFlagsMutuallyExclusive("json", "html")
+	cmd.MarkFlagsMutuallyExclusive("json", "ida")
+	cmd.MarkFlagsMutuallyExclusive("json", "ghidra")
 	cmd.MarkFlagsMutuallyExclusive("jsonl", "html")
+	cmd.MarkFlagsMutuallyExclusive("jsonl", "ida")
+	cmd.MarkFlagsMutuallyExclusive("jsonl", "ghidra")
+	cmd.MarkFlagsMutuallyExclusive("html", "ida")
+	cmd.MarkFlagsMutuallyExclusive("html", "ghidra")
+	cmd.MarkFlagsMutuallyExclusive("ida", "ghidra")
 
 	return cmd
 }

@@ -83,7 +83,17 @@ binary file
          │
          ▼
 ┌─────────────────┐
-│  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text / HTML
+│     taint       │  inter-procedural source→sink reachability via CalledBy edges (--taint)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│    classify     │  rule-based threat classification from tag union + string signals
+└────────┬────────┘  always runs; no flag required
+         │
+         ▼
+┌─────────────────┐
+│  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text / HTML / IDA / Ghidra
 └─────────────────┘
 ```
 
@@ -107,8 +117,11 @@ binary file
 | entropy | `internal/entropy` | Shannon entropy per section; packer signature detection | `SectionInfo` |
 | assets | `internal/assets` | Embedded asset path detection via callgraph | `EmbeddedAsset` |
 | constants | `internal/constants` | Per-function interesting-immediate extraction (x86_64) | `ConstantInfo` |
+| taint | `internal/taint` | Inter-procedural source-to-sink reachability via call graph | `TaintFlow` |
+| classify | `internal/classify` | Rule-based threat classification (RAT, DOWNLOADER, RANSOMWARE, …) | `Result`, `Input`, `Class` |
+| yara | `internal/yara` | YARA rule generation from high-signal strings | — |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
-| output | `internal/output` | JSON, JSONL, text, and HTML writers | `AnalysisResult`, `TextOptions` |
+| output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
 | version | `internal/version` | Build-time version vars (ldflags injection) | `Version`, `Commit`, `Date` |
 
@@ -128,6 +141,8 @@ internal/obfuscation.StubMatch    →  output.DecryptorStubOutput
 internal/entropy.SectionInfo      →  output.SectionInfo  (+ BinaryInfo.Packer)
 internal/assets.EmbeddedAsset     →  output.AssetOutput
 internal/functions.ConstantInfo   →  output.ConstantOutput  (nested in FunctionOutput)
+internal/taint.TaintFlow          →  output.TaintFlowOutput
+internal/classify.Result          →  SummaryOutput.ThreatClass / ThreatConfidence / ThreatIndicators
 (aggregated counts)               →  output.SummaryOutput
 ```
 
@@ -242,6 +257,43 @@ ARM64 is explicitly skipped: ADRP immediates and other ARM64 encoded values are 
 ## Embedded Asset Detection
 
 `internal/assets.Detect` takes the full string list and the call graph. It first identifies functions that call into `embed.*` or `io/fs.*` (the `findEmbedUsers` pass), then filters strings to those that look like file paths (has extension, not absolute, no shell-special chars, 4–256 chars) and are referenced by one of those embed-using functions.
+
+---
+
+## Taint Analysis
+
+`internal/taint.Analyze(calls, calledBy)` performs inter-procedural source-to-sink reachability using the call graph.
+
+1. **Seed**: find all functions that directly call a source API (e.g. `os.Args`, `net/http.(*Request).`). These are "tainted producers."
+2. **Propagate**: BFS upward through `CalledBy` edges. A caller of a tainted function may receive tainted return values — conservative but avoids register-level tracking.
+3. **Terminate**: when a reachable function also calls a sink API (e.g. `os/exec.Command`), emit a `TaintFlow` with the full call path.
+
+Confidence is derived from path length: `high` (≤2 hops), `medium` (3–4), `low` (5–8). BFS is capped at 8 hops to prevent combinatorial explosion on densely-connected graphs.
+
+The stage is gated by `Options.TaintEnabled` and skipped unless `--taint` is passed. On binaries with >5000 user functions, a warning is emitted.
+
+---
+
+## Threat Classification
+
+`internal/classify.Classify(Input)` applies a fixed rule table over the union of all behavior tags and string content — no ML, no external calls.
+
+`Input` is assembled in `buildOutput()` after all pipeline stages complete. It contains the tag union across all functions, all extracted string values, the URL count, concurrency flag, and the obfuscation score.
+
+The classifier checks ordered match conditions. The first matching rule wins:
+
+| Class | Match condition |
+|-------|----------------|
+| `RAT` | NETWORK ∧ EXECUTION ∧ (FILE_READ ∨ FILE_WRITE) ∧ concurrency |
+| `DOWNLOADER` | NETWORK ∧ FILE_WRITE ∧ URL > 0 ∧ ¬EXECUTION |
+| `RANSOMWARE` | CRYPTO ∧ FILE_WRITE ∧ file-extension strings present |
+| `C2_AGENT` | NETWORK ∧ DNS ∧ CRYPTO ∧ concurrency |
+| `KEYLOGGER` | FILE_WRITE ∧ keylog string patterns |
+| `CRYPTOMINER` | NETWORK ∧ mining pool URL strings |
+| `TOOL` | ¬NETWORK ∧ ¬EXECUTION ∧ ¬MEMORY |
+| `UNKNOWN` | no rule matched |
+
+The result is always populated. A binary with no behavior tags receives `TOOL` with `low` confidence.
 
 ---
 

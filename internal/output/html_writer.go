@@ -101,6 +101,9 @@ tr:hover td{background:#1c2128}
 	if len(r.Types) > 0 {
 		b.WriteString(`<a href="#types">Types</a>`)
 	}
+	if len(r.TaintFlows) > 0 {
+		b.WriteString(`<a href="#taint">Taint</a>`)
+	}
 	if len(r.Warnings) > 0 {
 		b.WriteString(`<a href="#warnings">Warnings</a>`)
 	}
@@ -153,6 +156,12 @@ tr:hover td{background:#1c2128}
 	}
 	if r.Summary.DecryptorStubs > 0 {
 		b.WriteString(summaryCard("Decryptor Stubs", fmt.Sprint(r.Summary.DecryptorStubs), "suspected string encryption"))
+	}
+	if r.Summary.ThreatClass != "" {
+		b.WriteString(summaryCard("Threat", r.Summary.ThreatClass, r.Summary.ThreatConfidence+" confidence"))
+	}
+	if r.Summary.TaintFlows > 0 {
+		b.WriteString(summaryCard("Taint Flows", fmt.Sprint(r.Summary.TaintFlows), "source → sink paths"))
 	}
 	b.WriteString(`</div></section>`)
 
@@ -218,6 +227,21 @@ tr:hover td{background:#1c2128}
 			}
 			b.WriteString(fmt.Sprintf(`<tr><td>%s</td><td><span class="tag">%s</span></td><td>%d</td><td class="pkg">%s</td></tr>`,
 				html.EscapeString(t.Name), html.EscapeString(t.Kind), t.Size, fields))
+		}
+		b.WriteString(`</tbody></table></section>`)
+	}
+
+	if len(r.TaintFlows) > 0 {
+		b.WriteString(`<section id="taint"><h2>Taint Flows (` + fmt.Sprint(len(r.TaintFlows)) + `)</h2>`)
+		b.WriteString(`<table><thead><tr><th>Confidence</th><th>Source</th><th>Source Func</th><th>Sink</th><th>Sink Func</th><th>Hops</th></tr></thead><tbody>`)
+		for _, tf := range r.TaintFlows {
+			b.WriteString(fmt.Sprintf(`<tr><td><span class="tag">%s</span></td><td>%s</td><td class="pkg">%s</td><td>%s</td><td class="pkg">%s</td><td>%d</td></tr>`,
+				html.EscapeString(tf.Confidence),
+				html.EscapeString(tf.Source),
+				html.EscapeString(tf.SourceFunc),
+				html.EscapeString(tf.Sink),
+				html.EscapeString(tf.SinkFunc),
+				len(tf.Path)))
 		}
 		b.WriteString(`</tbody></table></section>`)
 	}

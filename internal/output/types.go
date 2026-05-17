@@ -35,7 +35,7 @@ type BinaryInfo struct {
 
 type FunctionOutput struct {
 	Name           string           `json:"name"`
-	Addr           string           `json:"addr"`            // hex e.g. "0x401000"
+	Addr           string           `json:"addr"` // hex e.g. "0x401000"
 	Package        string           `json:"package"`
 	PackageKind    string           `json:"package_kind"`    // "runtime","stdlib","user","cgo"
 	FunctionSource string           `json:"function_source"` // "pclntab","symbol_table","synthetic"
@@ -82,6 +82,15 @@ type DecryptorStubOutput struct {
 	XORKey      string `json:"xor_key,omitempty"` // hex e.g. "0x3f"; empty if not detected
 }
 
+type TaintFlowOutput struct {
+	Source     string   `json:"source"`
+	SourceFunc string   `json:"source_func"`
+	Sink       string   `json:"sink"`
+	SinkFunc   string   `json:"sink_func"`
+	Path       []string `json:"path"`
+	Confidence string   `json:"confidence"`
+}
+
 type SummaryOutput struct {
 	TotalFunctions      int      `json:"total_functions"`
 	UserFunctions       int      `json:"user_functions"`
@@ -103,6 +112,10 @@ type SummaryOutput struct {
 	ConcurrentFunctions int      `json:"concurrent_functions"`
 	CgoCallSites        []string `json:"cgo_call_sites,omitempty"`
 	DecryptorStubs      int      `json:"decryptor_stubs"`
+	TaintFlows          int      `json:"taint_flows"`
+	ThreatClass         string   `json:"threat_class,omitempty"`
+	ThreatConfidence    string   `json:"threat_confidence,omitempty"`
+	ThreatIndicators    []string `json:"threat_indicators,omitempty"`
 }
 
 type AnalysisResult struct {
@@ -114,6 +127,7 @@ type AnalysisResult struct {
 	Interfaces     []InterfaceImplOutput `json:"interfaces,omitempty"`
 	EmbeddedAssets []AssetOutput         `json:"embedded_assets,omitempty"`
 	DecryptorStubs []DecryptorStubOutput `json:"decryptor_stubs,omitempty"`
+	TaintFlows     []TaintFlowOutput     `json:"taint_flows,omitempty"`
 	Summary        SummaryOutput         `json:"summary"`
 	Warnings       []string              `json:"warnings,omitempty"`
 }

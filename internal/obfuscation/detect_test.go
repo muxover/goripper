@@ -23,10 +23,10 @@ func TestShannonEntropy_KnownValues(t *testing.T) {
 		wantMin float64
 		wantMax float64
 	}{
-		{"aaaaaaa", 0.0, 0.01},           // all same char → 0
-		{"ab", 1.0, 1.01},                // two equal-frequency chars → 1
-		{"aBcDeF1234567890", 3.5, 4.5},   // mixed → moderate entropy
-		{"xK9mP2qR7wL", 3.2, 4.0},        // garble-like short hash
+		{"aaaaaaa", 0.0, 0.01},         // all same char → 0
+		{"ab", 1.0, 1.01},              // two equal-frequency chars → 1
+		{"aBcDeF1234567890", 3.5, 4.5}, // mixed → moderate entropy
+		{"xK9mP2qR7wL", 3.2, 4.0},      // garble-like short hash
 	}
 	for _, tt := range tests {
 		h := shannonEntropy(tt.input)
@@ -125,10 +125,10 @@ func TestScoreLevel_Boundaries(t *testing.T) {
 func TestIsGarbledName_Table(t *testing.T) {
 	// These cases are unambiguous regardless of exact entropy threshold.
 	falseTests := []string{
-		"",                // empty
-		"a",               // too short
-		"main.main",       // normal Go name, low entropy
-		"runtime.mallocgc",// normal Go name, low entropy
+		"",                 // empty
+		"a",                // too short
+		"main.main",        // normal Go name, low entropy
+		"runtime.mallocgc", // normal Go name, low entropy
 		"verylongidentifierthatismorethantwentyfourcharacterslong", // too long last segment
 	}
 	for _, name := range falseTests {
@@ -139,9 +139,9 @@ func TestIsGarbledName_Table(t *testing.T) {
 
 	// Garble names: high entropy AND contain digits.
 	trueTests := []string{
-		"xK9mP2qRwL",  // 10 unique chars, has digits
-		"t3R7mK2nPq",  // 10 unique chars, has digits
-		"aB3xK9mPqR",  // 10 unique chars, has digits
+		"xK9mP2qRwL", // 10 unique chars, has digits
+		"t3R7mK2nPq", // 10 unique chars, has digits
+		"aB3xK9mPqR", // 10 unique chars, has digits
 	}
 	for _, name := range trueTests {
 		if !isGarbledName(name) {

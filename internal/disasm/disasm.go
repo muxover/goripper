@@ -4,12 +4,12 @@ package disasm
 type Op uint8
 
 const (
-	OpOther       Op = iota
-	OpCall           // direct or indirect function call
-	OpRet            // function return
-	OpCondBranch     // conditional branch
-	OpUncondBranch   // unconditional branch (not a call)
-	OpAddrLoad       // PC-relative address materialization (LEA/ADRP+ADD)
+	OpOther        Op = iota
+	OpCall            // direct or indirect function call
+	OpRet             // function return
+	OpCondBranch      // conditional branch
+	OpUncondBranch    // unconditional branch (not a call)
+	OpAddrLoad        // PC-relative address materialization (LEA/ADRP+ADD)
 )
 
 type Instr struct {

@@ -6,11 +6,12 @@ import (
 	"log"
 	"sort"
 
-	gobinary "github.com/muxover/goripper/internal/binary"
 	"github.com/muxover/goripper/internal/assets"
 	"github.com/muxover/goripper/internal/behaviors"
+	gobinary "github.com/muxover/goripper/internal/binary"
 	"github.com/muxover/goripper/internal/callgraph"
 	"github.com/muxover/goripper/internal/cfg"
+	"github.com/muxover/goripper/internal/classify"
 	"github.com/muxover/goripper/internal/concurrency"
 	"github.com/muxover/goripper/internal/constants"
 	"github.com/muxover/goripper/internal/disasm"
@@ -20,6 +21,7 @@ import (
 	"github.com/muxover/goripper/internal/obfuscation"
 	"github.com/muxover/goripper/internal/output"
 	gstrings "github.com/muxover/goripper/internal/strings"
+	"github.com/muxover/goripper/internal/taint"
 	gtypes "github.com/muxover/goripper/internal/types"
 )
 
@@ -43,6 +45,7 @@ type Analyzer struct {
 	decryptorStubs []obfuscation.StubMatch
 	xorKeys        map[string]byte
 	cgoCallSites   []string
+	taintFlows     []taint.TaintFlow
 	warnings       []string
 	hasBuildInfo   bool
 	disasm         disasm.Disassembler
@@ -81,6 +84,7 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 		{"extract constants", a.extractConstants},
 		{"detect assets", a.detectAssets},
 		{"detect obfuscation", a.detectObfuscation},
+		{"taint analysis", a.runTaint},
 	}
 
 	for _, stage := range stages {
@@ -454,6 +458,24 @@ func (a *Analyzer) detectAssets() error {
 	return nil
 }
 
+func (a *Analyzer) runTaint() error {
+	if !a.opts.TaintEnabled || a.graph == nil {
+		return nil
+	}
+	userFuncCount := 0
+	for _, fn := range a.funcs {
+		if fn.PackageKind == functions.PackageUser {
+			userFuncCount++
+		}
+	}
+	if userFuncCount > 5000 {
+		a.warnings = append(a.warnings,
+			"taint analysis on large binary (>5000 user functions) — consider --only-user to narrow scope")
+	}
+	a.taintFlows = taint.Analyze(a.graph.Calls, a.graph.CalledBy)
+	return nil
+}
+
 func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	result := &output.AnalysisResult{
 		Warnings: nilSafe(a.warnings),
@@ -593,14 +615,28 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		result.DecryptorStubs = append(result.DecryptorStubs, dso)
 	}
 
+	result.TaintFlows = make([]output.TaintFlowOutput, 0, len(a.taintFlows))
+	for _, tf := range a.taintFlows {
+		result.TaintFlows = append(result.TaintFlows, output.TaintFlowOutput{
+			Source:     tf.Source,
+			SourceFunc: tf.SourceFunc,
+			Sink:       tf.Sink,
+			SinkFunc:   tf.SinkFunc,
+			Path:       tf.Path,
+			Confidence: tf.Confidence,
+		})
+	}
+
 	sum := output.SummaryOutput{
 		TotalFunctions: len(a.funcs),
 		RecoveredTypes: len(a.rtypes),
 		InterfaceImpls: len(a.itabs),
 		EmbeddedAssets: len(a.embAssets),
 		DecryptorStubs: len(a.decryptorStubs),
+		TaintFlows:     len(a.taintFlows),
 		CgoCallSites:   nilSafe(a.cgoCallSites),
 	}
+	allTags := make(map[string]bool)
 	for _, fn := range a.funcs {
 		switch fn.PackageKind {
 		case functions.PackageUser:
@@ -617,6 +653,9 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		}
 		if len(fn.Tags) > 0 {
 			sum.SuspiciousFunctions++
+			for _, t := range fn.Tags {
+				allTags[t] = true
+			}
 		}
 		if fn.IsConcurrent {
 			sum.ConcurrentFunctions++
@@ -639,6 +678,35 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 			sum.PlainStrings++
 		}
 	}
+
+	tagList := make([]string, 0, len(allTags))
+	for t := range allTags {
+		tagList = append(tagList, t)
+	}
+	allStrVals := make([]string, 0, len(a.strs))
+	for _, s := range a.strs {
+		allStrVals = append(allStrVals, s.Value)
+	}
+	threat := classify.Classify(classify.Input{
+		BehaviorTags:   tagList,
+		StringValues:   allStrVals,
+		URLCount:       sum.URLStrings,
+		HasConcurrency: sum.ConcurrentFunctions > 0,
+		HasCrypto:      allTags["CRYPTO"],
+		HasNetwork:     allTags["NETWORK"],
+		HasFileWrite:   allTags["FILE_WRITE"],
+		HasFileRead:    allTags["FILE_READ"],
+		HasExecution:   allTags["EXECUTION"],
+		HasRegistry:    allTags["REGISTRY"],
+		HasDNS:         allTags["DNS"],
+		HasHTTP:        allTags["HTTP"],
+		HasMemory:      allTags["MEMORY"],
+		ObfScore:       a.obfResult.Score,
+	})
+	sum.ThreatClass = string(threat.Class)
+	sum.ThreatConfidence = threat.Confidence
+	sum.ThreatIndicators = threat.Indicators
+
 	result.Summary = sum
 
 	return result

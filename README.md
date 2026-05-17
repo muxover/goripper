@@ -3,10 +3,10 @@
 <div align="center">
 
 [![CI](https://github.com/muxover/goripper/actions/workflows/ci.yml/badge.svg)](https://github.com/muxover/goripper/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/muxover/goripper.svg)](https://pkg.go.dev/github.com/muxover/goripper)
+[![Go Reference](https://pkg.go.dev/badge/github.com/muxover/goripper/cmd/goripper.svg)](https://pkg.go.dev/github.com/muxover/goripper/cmd/goripper)
 [![Go Report Card](https://goreportcard.com/badge/github.com/muxover/goripper)](https://goreportcard.com/report/github.com/muxover/goripper)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/muxover/goripper)](https://github.com/muxover/goripper/releases)
+[![Release](https://img.shields.io/github/v/release/muxover/goripper)](https://github.com/muxover/goripper/releases/latest)
 
 **Extract behavioral intelligence from compiled Go binaries.**
 
@@ -16,7 +16,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.3.0` — Section entropy, embedded asset detection, constant extraction, HTML report, and memory-bounded scanning.
+> **Status:** `v0.4.0` — Taint analysis, YARA generation, threat classification, IDA/Ghidra export.
 
 ---
 
@@ -41,6 +41,11 @@ GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without sour
 - **Embedded Asset Detection** — Finds embedded file paths via callgraph-guided string matching against `embed.*` and `io/fs.*` callers.
 - **Constant Extraction** — Flags interesting immediates (network ports, binary magic numbers, crypto key sizes) per function (x86_64).
 - **HTML Report** — Self-contained dark-theme HTML with inline SVG entropy chart and filterable tables; no external dependencies.
+- **Taint Analysis** — Traces untrusted input (os.Args, stdin, HTTP body, env vars) to dangerous sinks (exec, SQL, file write, template render) through the call graph with path and confidence.
+- **Threat Classification** — Rule-based verdict (RAT, DOWNLOADER, RANSOMWARE, C2_AGENT, KEYLOGGER, CRYPTOMINER, TOOL, UNKNOWN) from behavior tags and string signals — no external API.
+- **YARA Generation** — Generates a YARA rule from high-signal strings (URLs, secrets, obfuscated function names) with PE/ELF format conditions.
+- **IDA Pro Export** — IDAPython script that renames all functions to their pclntab names and applies behavior tags as comments; standalone, no plugin required.
+- **Ghidra Export** — GhidraScript (Java) that renames functions and annotates recovered struct types; runs via Script Manager.
 - **JSON + JSONL + Text + HTML Output** — Machine-readable JSON, streaming JSONL for pipelines, analyst-friendly tabular text, or self-contained HTML.
 
 ---
@@ -129,6 +134,7 @@ Recovered types:      203
 | `goripper callgraph <binary>` | Print the call graph as a tree |
 | `goripper diff <binary1> <binary2>` | Compare two binaries — added/removed/modified functions and strings |
 | `goripper version` | Print version, Go toolchain, OS/arch, commit, and build date |
+| `goripper yara <binary>` | Generate a YARA rule from binary strings and function names |
 | `goripper completion <shell>` | Generate shell completion for `bash`, `zsh`, `fish`, or `powershell` |
 
 ---
@@ -156,6 +162,9 @@ Recovered types:      203
 | `--cfg` | `false` | Build CFG and emit pseudocode (slow on large binaries) |
 | `--types` | `false` | Run type recovery from runtime `rtype` descriptors |
 | `--assets` | `false` | Detect embedded asset paths via embed/io/fs callgraph |
+| `--taint` | `false` | Run inter-procedural taint analysis (source → sink paths) |
+| `--ida` | `false` | Emit an IDAPython rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ghidra`) |
+| `--ghidra` | `false` | Emit a GhidraScript (Java) rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ida`) |
 | `--max-memory-mb N` | `0` | Skip CFG stage when binary exceeds N MB (0 = no limit) |
 | `--min-len N` | `0` | Drop strings shorter than N bytes |
 | `--no-plain` | `false` | Suppress plain-text strings from output |
@@ -243,8 +252,11 @@ goripper/
     ├── entropy/           # Per-section Shannon entropy + packer detection
     ├── assets/            # Embedded asset path detection via callgraph
     ├── constants/         # Interesting immediate extraction (ports, magic numbers, crypto sizes)
+    ├── taint/             # Inter-procedural taint analysis (source → sink via call graph)
+    ├── classify/          # Rule-based threat classification (RAT, DOWNLOADER, RANSOMWARE, …)
+    ├── yara/              # YARA rule generation from binary strings
     ├── version/           # Version vars (injected via ldflags at release)
-    └── output/            # JSON, JSONL, text, and HTML report writers
+    └── output/            # JSON, JSONL, text, HTML, IDA, and Ghidra report writers
 ```
 
 ---
@@ -274,7 +286,7 @@ Licensed under the [Apache-2.0](LICENSE) license.
 - Repository: https://github.com/muxover/goripper
 - Issues: https://github.com/muxover/goripper/issues
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Go Reference: https://pkg.go.dev/github.com/muxover/goripper
+- Go Reference: https://pkg.go.dev/github.com/muxover/goripper/cmd/goripper
 
 ---
 

@@ -35,9 +35,9 @@ type FuncEntry struct {
 
 type ParsedPclntab struct {
 	Version   PclntabVersion
-	GoVersion string     // inferred version range from magic
-	PtrSize   uint8      // 4 or 8
-	MinLC     uint8      // minimum instruction size (quantum)
+	GoVersion string // inferred version range from magic
+	PtrSize   uint8  // 4 or 8
+	MinLC     uint8  // minimum instruction size (quantum)
 	Funcs     []FuncEntry
 	TextStart uint64 // base VA of text section (used in 1.18+ offset adjustment)
 }

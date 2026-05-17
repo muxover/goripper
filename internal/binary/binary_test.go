@@ -112,7 +112,7 @@ func TestPclntabNfunc_BelowThreshold(t *testing.T) {
 	// We use Go1.20+ magic 0xFFFFFFF1 with nfunc=5 (below the ScanForPclntab threshold of 10)
 	hdr := []byte{
 		0xF1, 0xFF, 0xFF, 0xFF, // magic (LE)
-		0x00, 0x00,             // pad
+		0x00, 0x00, // pad
 		0x01,                   // minLC (x86=1)
 		0x08,                   // ptrSize=8
 		0x05, 0x00, 0x00, 0x00, // nfunc=5 (LE uint32)

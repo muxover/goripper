@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-17
+
+### Added
+- **Taint analysis** (`internal/taint`, `--taint` flag on `analyze`): inter-procedural source-to-sink reachability via call graph. Sources: `os.Args`, `os.Stdin`, `os.Getenv`, `os.ReadFile`, `net/http.Request.Body`, `net.Conn.Read`, `bufio.Scanner`. Sinks: `os/exec.Command`, `syscall.Exec`, `database/sql.Query`, `os.WriteFile`, `net.Conn.Write`, `encoding/json.Unmarshal`, `html/template.Execute`. Propagates taint upward through CalledBy edges (conservative: callers of tainted functions may receive tainted return values). Results in `AnalysisResult.TaintFlows []TaintFlowOutput` with source, sink, call path, and confidence (`high`/`medium`/`low`). On binaries with >5000 user functions, emits a warning and suggests `--only-user`.
+- **Threat classification** (`internal/classify`): rule-based classifier — no external API, no ML. Runs on every analysis. Classes: `RAT`, `DOWNLOADER`, `RANSOMWARE`, `C2_AGENT`, `KEYLOGGER`, `CRYPTOMINER`, `TOOL`, `UNKNOWN`. Signals: behavior tag union, string content patterns (mining pool URLs, keylog APIs, file-extension enumeration), URL count, concurrency. Results in `SummaryOutput.ThreatClass`, `ThreatConfidence`, `ThreatIndicators`.
+- **YARA rule generation** (`internal/yara`, `goripper yara <binary>` subcommand): selects up to 30 high-signal strings (URL/secret > path > function names for obfuscated binaries), emits a valid YARA rule with PE or ELF format condition and `meta` block. Output to stdout or `-o <file>`.
+- **IDA Pro export** (`--ida` flag on `analyze`): emits an IDAPython script that renames all pclntab functions to their Go names via `idc.set_name`, applies behavior tags as repeatable comments, and bookmarks concurrent functions. Standalone `.py`, no plugin required.
+- **Ghidra export** (`--ghidra` flag on `analyze`): emits a GhidraScript (Java) that renames functions via `f.setName`, applies pre-comments with behavior tags, and annotates recovered struct types. Standalone, runs via Script Manager.
+- `TaintFlowOutput` type in `internal/output`; `TaintFlows []TaintFlowOutput` on `AnalysisResult`; `TaintFlows int`, `ThreatClass`, `ThreatConfidence`, `ThreatIndicators` on `SummaryOutput`.
+- `TaintEnabled bool` on `pkg/analyzer.Options`.
+- Taint flows appear in JSON, JSONL (as `"type":"taint_flow"` records), and text output (`=== Taint Flows ===`). Threat class appears in summary and JSONL summary record.
+- `--ida` and `--ghidra` are mutually exclusive with `--json`, `--jsonl`, `--html`, and each other.
+
 ## [0.3.0] - 2026-05-15
 
 ### Added
@@ -284,7 +297,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/muxover/goripper/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/muxover/goripper/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/muxover/goripper/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/muxover/goripper/compare/v0.0.9-pre...v0.1.0

@@ -49,6 +49,9 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 	if len(result.EmbeddedAssets) > 0 {
 		writeEmbeddedAssets(result.EmbeddedAssets, w, opts)
 	}
+	if len(result.TaintFlows) > 0 {
+		writeTaintFlows(result.TaintFlows, w, opts)
+	}
 }
 
 type TextOptions struct {
@@ -119,6 +122,16 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 	}
 	if sum.DecryptorStubs > 0 {
 		fmt.Fprintf(w, "Decryptor stubs:      %d  (possible string encryption)\n", sum.DecryptorStubs)
+	}
+	if sum.TaintFlows > 0 {
+		fmt.Fprintf(w, "Taint flows:          %d\n", sum.TaintFlows)
+	}
+	if sum.ThreatClass != "" {
+		conf := ""
+		if sum.ThreatConfidence != "" {
+			conf = " [" + sum.ThreatConfidence + "]"
+		}
+		fmt.Fprintf(w, "Threat class:         %s%s\n", sum.ThreatClass, conf)
 	}
 	fmt.Fprintln(w)
 }
@@ -342,6 +355,21 @@ func writeEmbeddedAssets(assets []AssetOutput, w io.Writer, opts TextOptions) {
 	}
 	for _, a := range assets {
 		fmt.Fprintf(w, "  %s\n", a.Path)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeTaintFlows(flows []TaintFlowOutput, w io.Writer, opts TextOptions) {
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Taint Flows (%d) ===\n", len(flows))
+	}
+	for _, f := range flows {
+		fmt.Fprintf(w, "  [%s] %s → %s\n", f.Confidence, f.Source, f.Sink)
+		fmt.Fprintf(w, "    source_func: %s\n", f.SourceFunc)
+		fmt.Fprintf(w, "    sink_func:   %s\n", f.SinkFunc)
+		if len(f.Path) > 1 {
+			fmt.Fprintf(w, "    path: %s\n", strings.Join(f.Path, " → "))
+		}
 	}
 	fmt.Fprintln(w)
 }

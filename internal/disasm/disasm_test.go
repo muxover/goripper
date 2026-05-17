@@ -143,8 +143,6 @@ func TestX86_EmptyData_Error(t *testing.T) {
 	}
 }
 
-
-
 func TestARM64_BL(t *testing.T) {
 	// BL #0 encodes as 0x94000000 (offset 0 → target = va)
 	// BL #+4 = branch to next word: 0x94000001

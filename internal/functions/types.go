@@ -47,9 +47,9 @@ type Function struct {
 	Source       FunctionSource // where the name came from
 	IsRuntime    bool
 	IsConcurrent bool
-	Calls        []string // callee names (populated by callgraph)
-	CalledBy     []string // caller names (populated by callgraph)
-	Strings      []string // referenced strings (populated by string extractor)
+	Calls        []string       // callee names (populated by callgraph)
+	CalledBy     []string       // caller names (populated by callgraph)
+	Strings      []string       // referenced strings (populated by string extractor)
 	Tags         []string       // behavior tags (populated by tagger)
 	Constants    []ConstantInfo // interesting immediates (populated by constants extractor)
 	Pseudocode   string         // simplified pseudocode (populated by CFG)
