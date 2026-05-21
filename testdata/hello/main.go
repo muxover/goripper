@@ -1,6 +1,4 @@
-// Package main is a minimal fixture binary used by GoRipper integration tests.
-// It imports net/http so behavior tags fire, and embeds a URL constant so string
-// classification is exercised.
+// imports net/http and a URL constant to exercise behavior tagging and string classification.
 package main
 
 import (
