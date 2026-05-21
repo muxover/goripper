@@ -48,6 +48,7 @@ type FunctionOutput struct {
 	IsRuntime      bool             `json:"is_runtime"`
 	IsConcurrent   bool             `json:"is_concurrent"`
 	Pseudocode     string           `json:"pseudocode,omitempty"`
+	SimilarityHash string           `json:"similarity_hash,omitempty"`
 }
 
 type StringOutput struct {
@@ -91,6 +92,19 @@ type TaintFlowOutput struct {
 	Confidence string   `json:"confidence"`
 }
 
+type ModuleGraphOutput struct {
+	MainModule   string                   `json:"main_module"`
+	GoVersion    string                   `json:"go_version"`
+	Dependencies []ModuleDependencyOutput `json:"dependencies"`
+}
+
+type ModuleDependencyOutput struct {
+	Path          string   `json:"path"`
+	Version       string   `json:"version"`
+	UsedFunctions int      `json:"used_functions"`
+	CVEs          []string `json:"cves,omitempty"`
+}
+
 type SummaryOutput struct {
 	TotalFunctions      int      `json:"total_functions"`
 	UserFunctions       int      `json:"user_functions"`
@@ -113,6 +127,7 @@ type SummaryOutput struct {
 	CgoCallSites        []string `json:"cgo_call_sites,omitempty"`
 	DecryptorStubs      int      `json:"decryptor_stubs"`
 	TaintFlows          int      `json:"taint_flows"`
+	ModuleDeps          int      `json:"module_deps,omitempty"`
 	ThreatClass         string   `json:"threat_class,omitempty"`
 	ThreatConfidence    string   `json:"threat_confidence,omitempty"`
 	ThreatIndicators    []string `json:"threat_indicators,omitempty"`
@@ -128,6 +143,7 @@ type AnalysisResult struct {
 	EmbeddedAssets []AssetOutput         `json:"embedded_assets,omitempty"`
 	DecryptorStubs []DecryptorStubOutput `json:"decryptor_stubs,omitempty"`
 	TaintFlows     []TaintFlowOutput     `json:"taint_flows,omitempty"`
+	ModuleGraph    *ModuleGraphOutput    `json:"module_graph,omitempty"`
 	Summary        SummaryOutput         `json:"summary"`
 	Warnings       []string              `json:"warnings,omitempty"`
 }

@@ -52,6 +52,9 @@ func WriteText(result *AnalysisResult, w io.Writer, opts TextOptions) {
 	if len(result.TaintFlows) > 0 {
 		writeTaintFlows(result.TaintFlows, w, opts)
 	}
+	if result.ModuleGraph != nil {
+		writeModuleGraph(result.ModuleGraph, w, opts)
+	}
 }
 
 type TextOptions struct {
@@ -125,6 +128,9 @@ func writeSummary(sum SummaryOutput, w io.Writer) {
 	}
 	if sum.TaintFlows > 0 {
 		fmt.Fprintf(w, "Taint flows:          %d\n", sum.TaintFlows)
+	}
+	if sum.ModuleDeps > 0 {
+		fmt.Fprintf(w, "Module deps:          %d\n", sum.ModuleDeps)
 	}
 	if sum.ThreatClass != "" {
 		conf := ""
@@ -370,6 +376,22 @@ func writeTaintFlows(flows []TaintFlowOutput, w io.Writer, opts TextOptions) {
 		if len(f.Path) > 1 {
 			fmt.Fprintf(w, "    path: %s\n", strings.Join(f.Path, " → "))
 		}
+	}
+	fmt.Fprintln(w)
+}
+
+func writeModuleGraph(mg *ModuleGraphOutput, w io.Writer, opts TextOptions) {
+	if !opts.Quiet {
+		fmt.Fprintf(w, "=== Module Dependencies (%d) ===\n", len(mg.Dependencies))
+		fmt.Fprintf(w, "Main:       %s\n", mg.MainModule)
+		fmt.Fprintf(w, "Go version: %s\n", mg.GoVersion)
+	}
+	for _, d := range mg.Dependencies {
+		cveStr := ""
+		if len(d.CVEs) > 0 {
+			cveStr = "  CVEs: " + strings.Join(d.CVEs, ", ")
+		}
+		fmt.Fprintf(w, "  %s@%s  funcs=%d%s\n", d.Path, d.Version, d.UsedFunctions, cveStr)
 	}
 	fmt.Fprintln(w)
 }

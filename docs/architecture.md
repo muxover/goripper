@@ -93,6 +93,16 @@ binary file
          │
          ▼
 ┌─────────────────┐
+│   similarity    │  per-user-function normalized opcode hash (FNV-64a, always runs)
+└────────┬────────┘       → FunctionOutput.SimilarityHash; used by compare + scan-dir --cluster
+         │
+         ▼
+┌─────────────────┐
+│    modules      │  debug/buildinfo → module dependency graph + CVE cross-ref (--modules)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
 │  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text / HTML / IDA / Ghidra
 └─────────────────┘
 ```
@@ -120,6 +130,9 @@ binary file
 | taint | `internal/taint` | Inter-procedural source-to-sink reachability via call graph | `TaintFlow` |
 | classify | `internal/classify` | Rule-based threat classification (RAT, DOWNLOADER, RANSOMWARE, …) | `Result`, `Input`, `Class` |
 | yara | `internal/yara` | YARA rule generation from high-signal strings | — |
+| similarity | `internal/similarity` | Per-function normalized instruction hash; cross-binary comparison | `CompareResult` |
+| cluster | `internal/cluster` | Single-linkage clustering on pairwise similarity scores | `Group` |
+| modules | `internal/modules` | Module dependency graph via `debug/buildinfo`; bundled CVE table | `ModuleInfo`, `Dependency` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
 | output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
@@ -143,10 +156,12 @@ internal/assets.EmbeddedAsset     →  output.AssetOutput
 internal/functions.ConstantInfo   →  output.ConstantOutput  (nested in FunctionOutput)
 internal/taint.TaintFlow          →  output.TaintFlowOutput
 internal/classify.Result          →  SummaryOutput.ThreatClass / ThreatConfidence / ThreatIndicators
+internal/similarity hashes        →  FunctionOutput.SimilarityHash
+internal/modules.ModuleInfo       →  output.ModuleGraphOutput  (+ SummaryOutput.ModuleDeps)
 (aggregated counts)               →  output.SummaryOutput
 ```
 
-`AnalysisResult` is the only thing that crosses the `internal/` boundary into `cmd/` and `pkg/`. All four output writers (`WriteJSON`, `WriteJSONL`, `WriteText`, `WriteHTML`) consume it.
+`AnalysisResult` is the only thing that crosses the `internal/` boundary into `cmd/` and `pkg/`. All output writers (`WriteJSON`, `WriteJSONL`, `WriteText`, `WriteHTML`) consume it.
 
 ---
 

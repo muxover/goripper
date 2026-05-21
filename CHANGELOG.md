@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-21
+
+### Added
+- **Function similarity hashing** (`internal/similarity`): each user function is hashed from its normalized instruction sequence (opcodes + indirect flag only; immediates and addresses stripped). Two functions differing only in constants or addresses produce the same hash. New field `FunctionOutput.SimilarityHash` (16-char hex FNV-64a) in all output formats.
+- **`goripper compare <a> <b>`** (`cmd/goripper/compare_cmd.go`): compares two Go binaries by similarity hash, reporting shared functions, shared packages, functions unique to each binary, and an overall `SimilarityScore` (shared / max-total). `--json` for machine-readable output.
+- **`goripper scan-dir <dir>`** (`cmd/goripper/scandir_cmd.go`): recursively finds and analyzes Go binaries in parallel. `--workers N` (default: CPU count), `--only-go` to skip non-Go files via gopclntab detection, `--json` / `--jsonl` (default) output, `--cluster` to group results by code similarity after scanning.
+- **Malware family clustering** (`internal/cluster`): single-linkage clustering on pairwise similarity scores. Threshold 0.6 — pairs above this are merged. Reports cluster members, within-cluster minimum similarity, and shared packages.
+- **Module dependency graph** (`internal/modules`, `--modules` on `analyze`): reads `debug/buildinfo` to recover the full Go module dependency tree with path, version, and used-function count per dependency. Cross-references against a bundled CVE table (7 entries for high-impact Go library CVEs). Results in `AnalysisResult.ModuleGraph` and JSONL `"type":"module_graph"` record.
+- `ModuleGraphOutput`, `ModuleDependencyOutput` types in `internal/output`; `AnalysisResult.ModuleGraph`; `SummaryOutput.ModuleDeps`.
+- `ModulesEnabled bool` on `pkg/analyzer.Options`.
+- Module graph appears in JSON, JSONL, and text output (`=== Module Graph ===`).
+
 ## [0.4.0] - 2026-05-17
 
 ### Added
@@ -297,7 +309,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/muxover/goripper/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/muxover/goripper/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/muxover/goripper/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/muxover/goripper/compare/v0.1.0...v0.2.0

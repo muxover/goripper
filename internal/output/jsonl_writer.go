@@ -7,7 +7,7 @@ import (
 )
 
 // Each line is a self-contained JSON object with a "type" discriminator.
-// Emission order: binary_info → functions → strings → behaviors → taint_flow (if any) → summary (always last).
+// Emission order: binary_info → functions → strings → behaviors → taint_flow (if any) → module_graph (if any) → summary (always last).
 func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 	enc := json.NewEncoder(w)
 
@@ -93,7 +93,20 @@ func WriteJSONL(w io.Writer, result *AnalysisResult) error {
 		}
 	}
 
-	// 6. summary — always last
+	// 6. module_graph (only if present)
+	if result.ModuleGraph != nil {
+		mg := result.ModuleGraph
+		if err := enc.Encode(map[string]any{
+			"type":         "module_graph",
+			"main_module":  mg.MainModule,
+			"go_version":   mg.GoVersion,
+			"dependencies": mg.Dependencies,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// 7. summary — always last
 	return enc.Encode(map[string]any{
 		"type":              "summary",
 		"total_functions":   result.Summary.TotalFunctions,

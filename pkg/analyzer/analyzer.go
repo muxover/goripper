@@ -18,8 +18,10 @@ import (
 	"github.com/muxover/goripper/internal/entropy"
 	"github.com/muxover/goripper/internal/functions"
 	"github.com/muxover/goripper/internal/gopclntab"
+	"github.com/muxover/goripper/internal/modules"
 	"github.com/muxover/goripper/internal/obfuscation"
 	"github.com/muxover/goripper/internal/output"
+	"github.com/muxover/goripper/internal/similarity"
 	gstrings "github.com/muxover/goripper/internal/strings"
 	"github.com/muxover/goripper/internal/taint"
 	gtypes "github.com/muxover/goripper/internal/types"
@@ -49,6 +51,8 @@ type Analyzer struct {
 	warnings       []string
 	hasBuildInfo   bool
 	disasm         disasm.Disassembler
+	simHashes      map[string]string
+	moduleInfo     *modules.ModuleInfo
 }
 
 func New(opts Options) *Analyzer {
@@ -85,6 +89,8 @@ func (a *Analyzer) Run() (*output.AnalysisResult, error) {
 		{"detect assets", a.detectAssets},
 		{"detect obfuscation", a.detectObfuscation},
 		{"taint analysis", a.runTaint},
+		{"similarity hashing", a.runSimilarity},
+		{"module graph", a.runModules},
 	}
 
 	for _, stage := range stages {
@@ -476,6 +482,41 @@ func (a *Analyzer) runTaint() error {
 	return nil
 }
 
+func (a *Analyzer) runSimilarity() error {
+	textData, err := a.binary.Section(".text")
+	if err != nil {
+		return nil
+	}
+	textVA, _ := a.binary.SectionVA(".text")
+	a.simHashes = make(map[string]string)
+	for _, fn := range a.funcs {
+		if fn.PackageKind != functions.PackageUser {
+			continue
+		}
+		h := similarity.HashFunction(textData, textVA, fn, a.disasm)
+		if h != "" {
+			a.simHashes[fn.Name] = h
+		}
+	}
+	return nil
+}
+
+func (a *Analyzer) runModules() error {
+	if !a.opts.ModulesEnabled {
+		return nil
+	}
+	pkgs := make([]string, 0, len(a.funcs))
+	for _, fn := range a.funcs {
+		pkgs = append(pkgs, fn.Package)
+	}
+	info, err := modules.Extract(a.opts.BinaryPath, pkgs)
+	if err != nil {
+		return nil // buildinfo absent — skip silently
+	}
+	a.moduleInfo = info
+	return nil
+}
+
 func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	result := &output.AnalysisResult{
 		Warnings: nilSafe(a.warnings),
@@ -541,6 +582,7 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 			IsRuntime:      fn.IsRuntime,
 			IsConcurrent:   fn.IsConcurrent,
 			Pseudocode:     fn.Pseudocode,
+			SimilarityHash: a.simHashes[fn.Name],
 		}
 		if len(fn.Constants) > 0 {
 			fo.Constants = make([]output.ConstantOutput, len(fn.Constants))
@@ -627,6 +669,23 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 		})
 	}
 
+	if a.moduleInfo != nil {
+		mg := &output.ModuleGraphOutput{
+			MainModule:   a.moduleInfo.MainModule,
+			GoVersion:    a.moduleInfo.GoVersion,
+			Dependencies: make([]output.ModuleDependencyOutput, len(a.moduleInfo.Dependencies)),
+		}
+		for i, d := range a.moduleInfo.Dependencies {
+			mg.Dependencies[i] = output.ModuleDependencyOutput{
+				Path:          d.Path,
+				Version:       d.Version,
+				UsedFunctions: d.UsedFunctions,
+				CVEs:          d.CVEs,
+			}
+		}
+		result.ModuleGraph = mg
+	}
+
 	sum := output.SummaryOutput{
 		TotalFunctions: len(a.funcs),
 		RecoveredTypes: len(a.rtypes),
@@ -706,6 +765,9 @@ func (a *Analyzer) buildOutput() *output.AnalysisResult {
 	sum.ThreatClass = string(threat.Class)
 	sum.ThreatConfidence = threat.Confidence
 	sum.ThreatIndicators = threat.Indicators
+	if a.moduleInfo != nil {
+		sum.ModuleDeps = len(a.moduleInfo.Dependencies)
+	}
 
 	result.Summary = sum
 

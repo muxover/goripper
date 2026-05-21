@@ -16,7 +16,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.4.0` — Taint analysis, YARA generation, threat classification, IDA/Ghidra export.
+> **Status:** `v0.5.0` — Multi-binary analysis: similarity hashing, scan-dir, compare, clustering, module graph.
 
 ---
 
@@ -46,6 +46,11 @@ GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without sour
 - **YARA Generation** — Generates a YARA rule from high-signal strings (URLs, secrets, obfuscated function names) with PE/ELF format conditions.
 - **IDA Pro Export** — IDAPython script that renames all functions to their pclntab names and applies behavior tags as comments; standalone, no plugin required.
 - **Ghidra Export** — GhidraScript (Java) that renames functions and annotates recovered struct types; runs via Script Manager.
+- **Function Similarity Hashing** — Each user function gets a normalized instruction-sequence hash (immediates stripped); stable across minor constant changes.
+- **Cross-Binary Comparison** — `goripper compare` reports shared functions, shared packages, and a similarity score between two binaries.
+- **Batch Analysis** — `goripper scan-dir` analyzes a directory of binaries in parallel with a configurable worker pool.
+- **Malware Family Clustering** — Groups binaries by code similarity (single-linkage, threshold 0.6) after a `scan-dir` run.
+- **Module Dependency Graph** — Recovers the full Go module dependency tree from `debug/buildinfo`; cross-references against a bundled CVE table.
 - **JSON + JSONL + Text + HTML Output** — Machine-readable JSON, streaming JSONL for pipelines, analyst-friendly tabular text, or self-contained HTML.
 
 ---
@@ -135,6 +140,8 @@ Recovered types:      203
 | `goripper diff <binary1> <binary2>` | Compare two binaries — added/removed/modified functions and strings |
 | `goripper version` | Print version, Go toolchain, OS/arch, commit, and build date |
 | `goripper yara <binary>` | Generate a YARA rule from binary strings and function names |
+| `goripper compare <binary1> <binary2>` | Compare two binaries by code similarity — shared functions, packages, score |
+| `goripper scan-dir <directory>` | Analyze all Go binaries in a directory in parallel |
 | `goripper completion <shell>` | Generate shell completion for `bash`, `zsh`, `fish`, or `powershell` |
 
 ---
@@ -163,6 +170,7 @@ Recovered types:      203
 | `--types` | `false` | Run type recovery from runtime `rtype` descriptors |
 | `--assets` | `false` | Detect embedded asset paths via embed/io/fs callgraph |
 | `--taint` | `false` | Run inter-procedural taint analysis (source → sink paths) |
+| `--modules` | `false` | Recover module dependency graph from `debug/buildinfo` (CVE cross-reference included) |
 | `--ida` | `false` | Emit an IDAPython rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ghidra`) |
 | `--ghidra` | `false` | Emit a GhidraScript (Java) rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ida`) |
 | `--max-memory-mb N` | `0` | Skip CFG stage when binary exceeds N MB (0 = no limit) |
@@ -255,6 +263,9 @@ goripper/
     ├── taint/             # Inter-procedural taint analysis (source → sink via call graph)
     ├── classify/          # Rule-based threat classification (RAT, DOWNLOADER, RANSOMWARE, …)
     ├── yara/              # YARA rule generation from binary strings
+    ├── similarity/        # Function similarity hashing + cross-binary comparison
+    ├── cluster/           # Single-linkage clustering on similarity scores
+    ├── modules/           # Module dependency graph via debug/buildinfo + CVE table
     ├── version/           # Version vars (injected via ldflags at release)
     └── output/            # JSON, JSONL, text, HTML, IDA, and Ghidra report writers
 ```

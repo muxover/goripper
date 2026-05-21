@@ -34,6 +34,8 @@ intelligence: function names, call graph, strings, type info, and more.`,
 	callgraphCmd := newCallgraphCmd()
 	diffCmd := newDiffCmd()
 	yaraCmd := newYaraCmd()
+	compareCmd := newCompareCmd()
+	scandirCmd := newScandirCmd()
 
 	root.AddCommand(
 		analyzeCmd,
@@ -42,10 +44,12 @@ intelligence: function names, call graph, strings, type info, and more.`,
 		callgraphCmd,
 		diffCmd,
 		yaraCmd,
+		compareCmd,
+		scandirCmd,
 		newVersionCmd(),
 	)
 
-	registerCompletions(analyzeCmd, functionsCmd, stringsCmd, callgraphCmd, diffCmd)
+	registerCompletions(analyzeCmd, functionsCmd, stringsCmd, callgraphCmd, diffCmd, compareCmd, scandirCmd)
 
 	return root
 }
@@ -82,6 +86,7 @@ func newAnalyzeCmd() *cobra.Command {
 	var maxMemoryMB int
 	var assetsEnabled bool
 	var taintEnabled bool
+	var modulesEnabled bool
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -89,19 +94,20 @@ func newAnalyzeCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := analyzer.Options{
-				BinaryPath:    args[0],
-				NoRuntime:     flags.noRuntime,
-				OnlyUser:      flags.onlyUser,
-				Verbose:       flags.verbose,
-				JSONOutput:    flags.jsonOut,
-				CFGEnabled:    flags.cfgMode,
-				TypesEnabled:  flags.typeMode,
-				AssetsEnabled: assetsEnabled,
-				TaintEnabled:  taintEnabled,
-				MinStringLen:  minLen,
-				NoPlain:       noPlain,
-				MinRefs:       minRefs,
-				MaxMemoryMB:   maxMemoryMB,
+				BinaryPath:     args[0],
+				NoRuntime:      flags.noRuntime,
+				OnlyUser:       flags.onlyUser,
+				Verbose:        flags.verbose,
+				JSONOutput:     flags.jsonOut,
+				CFGEnabled:     flags.cfgMode,
+				TypesEnabled:   flags.typeMode,
+				AssetsEnabled:  assetsEnabled,
+				TaintEnabled:   taintEnabled,
+				MinStringLen:   minLen,
+				NoPlain:        noPlain,
+				MinRefs:        minRefs,
+				MaxMemoryMB:    maxMemoryMB,
+				ModulesEnabled: modulesEnabled,
 			}
 
 			result, err := runAnalysis(opts)
@@ -172,6 +178,7 @@ func newAnalyzeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&ghidraOut, "ghidra", false, "emit a GhidraScript (Java) rename script")
 	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
 	cmd.Flags().IntVar(&maxMemoryMB, "max-memory-mb", 0, "skip memory-intensive stages when binary exceeds N MB (0 = no limit)")
+	cmd.Flags().BoolVar(&modulesEnabled, "modules", false, "recover module dependency graph from build info")
 	cmd.MarkFlagsMutuallyExclusive("json", "jsonl")
 	cmd.MarkFlagsMutuallyExclusive("json", "html")
 	cmd.MarkFlagsMutuallyExclusive("json", "ida")
