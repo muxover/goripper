@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-30
+
+### Added
+- **`goripper trace <binary>`** (`cmd/goripper/trace_cmd.go`): live execution tracing — attaches to a binary and streams function call, syscall, file, and network events as JSONL or a human-readable table. Flags: `--timeout`, `--jsonl`, `--analyze`, `--hot-path`, `-o`.
+- **Linux backend** (`internal/trace/ebpf.go`): tracefs uprobe interface — attaches one uprobe per user function via `/sys/kernel/debug/tracing/uprobe_events`, reads from `trace_pipe`. Requires `CAP_BPF` or root, kernel 5.8+.
+- **macOS backend** (`internal/trace/dtrace.go`): generates a dtrace D script from the pclntab function list, runs `dtrace -q`, parses output into the unified event format.
+- **Windows backend** (`internal/trace/windbg.go`): Windows Debug API — `CreateProcess` with `DEBUG_PROCESS`, software INT3 breakpoints at every user function entry, single-step restore via trap flag in thread CONTEXT. No elevated privileges required.
+- **Static + dynamic merging** (`internal/trace/merge.go`, `--analyze` flag and `--trace-data <file>` on `analyze`): merges a captured trace into `AnalysisResult`. Populates `FunctionOutput.CallCount`, `TotalTimeNs`, `IsHot` (top 10% by call count), and `AnalysisResult.ObservedNetworkAddrs`, `ObservedFilePaths`, `ObservedSyscalls`.
+- **Hot path analysis** (`internal/trace/hotpath.go`, `--hot-path` flag): builds a call tree from sequential call/return events and prints it as an indented text tree with percentage annotations.
+- `CallCount int`, `TotalTimeNs int64`, `IsHot bool` on `FunctionOutput`; `ObservedNetworkAddrs`, `ObservedFilePaths`, `ObservedSyscalls []string` on `AnalysisResult`.
+
 ## [0.5.0] - 2026-05-21
 
 ### Added
@@ -309,7 +320,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/muxover/goripper/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/muxover/goripper/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/muxover/goripper/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/muxover/goripper/compare/v0.2.0...v0.3.0

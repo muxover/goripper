@@ -49,6 +49,9 @@ type FunctionOutput struct {
 	IsConcurrent   bool             `json:"is_concurrent"`
 	Pseudocode     string           `json:"pseudocode,omitempty"`
 	SimilarityHash string           `json:"similarity_hash,omitempty"`
+	CallCount      int              `json:"call_count,omitempty"`
+	TotalTimeNs    int64            `json:"total_time_ns,omitempty"`
+	IsHot          bool             `json:"is_hot,omitempty"`
 }
 
 type StringOutput struct {
@@ -143,7 +146,10 @@ type AnalysisResult struct {
 	EmbeddedAssets []AssetOutput         `json:"embedded_assets,omitempty"`
 	DecryptorStubs []DecryptorStubOutput `json:"decryptor_stubs,omitempty"`
 	TaintFlows     []TaintFlowOutput     `json:"taint_flows,omitempty"`
-	ModuleGraph    *ModuleGraphOutput    `json:"module_graph,omitempty"`
-	Summary        SummaryOutput         `json:"summary"`
-	Warnings       []string              `json:"warnings,omitempty"`
+	ModuleGraph          *ModuleGraphOutput    `json:"module_graph,omitempty"`
+	Summary              SummaryOutput         `json:"summary"`
+	Warnings             []string              `json:"warnings,omitempty"`
+	ObservedNetworkAddrs []string              `json:"observed_network_addrs,omitempty"`
+	ObservedFilePaths    []string              `json:"observed_file_paths,omitempty"`
+	ObservedSyscalls     []string              `json:"observed_syscalls,omitempty"`
 }

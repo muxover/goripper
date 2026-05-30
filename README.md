@@ -16,7 +16,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.5.0` — Multi-binary analysis: similarity hashing, scan-dir, compare, clustering, module graph.
+> **Status:** `v0.6.0` — Dynamic tracing: live function call, syscall, network, and file event capture; static+dynamic merge.
 
 ---
 
@@ -51,6 +51,9 @@ GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without sour
 - **Batch Analysis** — `goripper scan-dir` analyzes a directory of binaries in parallel with a configurable worker pool.
 - **Malware Family Clustering** — Groups binaries by code similarity (single-linkage, threshold 0.6) after a `scan-dir` run.
 - **Module Dependency Graph** — Recovers the full Go module dependency tree from `debug/buildinfo`; cross-references against a bundled CVE table.
+- **Live Tracing** — `goripper trace` attaches to a running binary and streams function calls, syscalls, network connections, and file access as JSONL events. Platform backends: Linux tracefs uprobes, macOS dtrace, Windows Debug API (INT3 breakpoints).
+- **Static + Dynamic Merge** — Feed a captured trace back into `analyze --trace-data` to annotate every function with `call_count`, `total_time_ns`, and `is_hot`; surfaces observed network addresses, file paths, and syscalls.
+- **Hot Path Analysis** — `--hot-path` prints the execution call tree with percentage annotations after a trace run.
 - **JSON + JSONL + Text + HTML Output** — Machine-readable JSON, streaming JSONL for pipelines, analyst-friendly tabular text, or self-contained HTML.
 
 ---
@@ -142,6 +145,7 @@ Recovered types:      203
 | `goripper yara <binary>` | Generate a YARA rule from binary strings and function names |
 | `goripper compare <binary1> <binary2>` | Compare two binaries by code similarity — shared functions, packages, score |
 | `goripper scan-dir <directory>` | Analyze all Go binaries in a directory in parallel |
+| `goripper trace <binary>` | Trace live function calls, syscalls, network, and file events at runtime |
 | `goripper completion <shell>` | Generate shell completion for `bash`, `zsh`, `fish`, or `powershell` |
 
 ---
@@ -171,6 +175,7 @@ Recovered types:      203
 | `--assets` | `false` | Detect embedded asset paths via embed/io/fs callgraph |
 | `--taint` | `false` | Run inter-procedural taint analysis (source → sink paths) |
 | `--modules` | `false` | Recover module dependency graph from `debug/buildinfo` (CVE cross-reference included) |
+| `--trace-data <file>` | `""` | Merge a captured JSONL trace into the analysis result |
 | `--ida` | `false` | Emit an IDAPython rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ghidra`) |
 | `--ghidra` | `false` | Emit a GhidraScript (Java) rename script (mutually exclusive with `--json`/`--jsonl`/`--html`/`--ida`) |
 | `--max-memory-mb N` | `0` | Skip CFG stage when binary exceeds N MB (0 = no limit) |
@@ -217,6 +222,17 @@ Recovered types:      203
 | `--no-runtime` | `false` | Exclude runtime functions from diff |
 | `--only-user` | `false` | Diff only user-written package functions |
 | `-o`, `--output <file>` | stdout | Write diff output to file |
+
+### `trace`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout duration` | `30s` | Stop tracing after this duration |
+| `--jsonl` | `false` | Stream events as JSONL (default: human-readable table) |
+| `--analyze` | `false` | Merge trace with static analysis and emit full result |
+| `--hot-path` | `false` | Print hot path call tree with percentages after tracing |
+| `-o`, `--output <file>` | stdout | Write trace output to file |
+| `-v`, `--verbose` | `false` | Verbose logging |
 
 ---
 
@@ -266,6 +282,7 @@ goripper/
     ├── similarity/        # Function similarity hashing + cross-binary comparison
     ├── cluster/           # Single-linkage clustering on similarity scores
     ├── modules/           # Module dependency graph via debug/buildinfo + CVE table
+    ├── trace/             # Live tracing: event types, Linux/macOS/Windows backends, merge, hot path
     ├── version/           # Version vars (injected via ldflags at release)
     └── output/            # JSON, JSONL, text, HTML, IDA, and Ghidra report writers
 ```
@@ -276,7 +293,6 @@ goripper/
 
 - Standard Go toolchain only — AGC/TinyGo binaries are not supported
 - CFG pseudocode is slow on binaries with 10,000+ functions
-- Static analysis only — no dynamic tracing or runtime instrumentation
 
 ---
 

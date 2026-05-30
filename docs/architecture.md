@@ -105,6 +105,8 @@ binary file
 ┌─────────────────┐
 │  AnalysisResult │  output.AnalysisResult — JSON / JSONL / text / HTML / IDA / Ghidra
 └─────────────────┘
+
+(optional post-analysis: --trace-data merges a captured trace into AnalysisResult)
 ```
 
 ---
@@ -133,6 +135,7 @@ binary file
 | similarity | `internal/similarity` | Per-function normalized instruction hash; cross-binary comparison | `CompareResult` |
 | cluster | `internal/cluster` | Single-linkage clustering on pairwise similarity scores | `Group` |
 | modules | `internal/modules` | Module dependency graph via `debug/buildinfo`; bundled CVE table | `ModuleInfo`, `Dependency` |
+| trace | `internal/trace` | Live tracing: event types, Linux/macOS/Windows backends, static+dynamic merge, hot path | `Event`, `Tracer`, `Options` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
 | output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
@@ -158,6 +161,8 @@ internal/taint.TaintFlow          →  output.TaintFlowOutput
 internal/classify.Result          →  SummaryOutput.ThreatClass / ThreatConfidence / ThreatIndicators
 internal/similarity hashes        →  FunctionOutput.SimilarityHash
 internal/modules.ModuleInfo       →  output.ModuleGraphOutput  (+ SummaryOutput.ModuleDeps)
+internal/trace.[]Event            →  FunctionOutput.CallCount / TotalTimeNs / IsHot
+                                      + AnalysisResult.ObservedNetworkAddrs / ObservedFilePaths / ObservedSyscalls
 (aggregated counts)               →  output.SummaryOutput
 ```
 
@@ -343,7 +348,6 @@ A function receives the tag if any of its direct callees match `CallTargets` OR 
 ## Limitations
 
 - Standard Go toolchain only — AGC and TinyGo binaries use different metadata layouts.
-- Static analysis only — no dynamic instrumentation or runtime tracing.
 - CFG pseudocode is slow on binaries with 10,000+ functions.
 
 ---

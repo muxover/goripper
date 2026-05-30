@@ -46,6 +46,7 @@ intelligence: function names, call graph, strings, type info, and more.`,
 		yaraCmd,
 		compareCmd,
 		scandirCmd,
+		newTraceCmd(),
 		newVersionCmd(),
 	)
 
@@ -87,6 +88,7 @@ func newAnalyzeCmd() *cobra.Command {
 	var assetsEnabled bool
 	var taintEnabled bool
 	var modulesEnabled bool
+	var traceDataFile string
 
 	cmd := &cobra.Command{
 		Use:   "analyze <binary>",
@@ -113,6 +115,12 @@ func newAnalyzeCmd() *cobra.Command {
 			result, err := runAnalysis(opts)
 			if err != nil {
 				return err
+			}
+
+			if traceDataFile != "" {
+				if mergeErr := mergeTraceData(result, traceDataFile); mergeErr != nil {
+					return fmt.Errorf("merge trace data: %w", mergeErr)
+				}
 			}
 
 			if jsonlOut {
@@ -179,6 +187,7 @@ func newAnalyzeCmd() *cobra.Command {
 	cmd.Flags().IntVar(&maxFunctions, "max-functions", 0, "cap function list at N (0 = unlimited)")
 	cmd.Flags().IntVar(&maxMemoryMB, "max-memory-mb", 0, "skip memory-intensive stages when binary exceeds N MB (0 = no limit)")
 	cmd.Flags().BoolVar(&modulesEnabled, "modules", false, "recover module dependency graph from build info")
+	cmd.Flags().StringVar(&traceDataFile, "trace-data", "", "path to a JSONL trace file to merge into analysis result")
 	cmd.MarkFlagsMutuallyExclusive("json", "jsonl")
 	cmd.MarkFlagsMutuallyExclusive("json", "html")
 	cmd.MarkFlagsMutuallyExclusive("json", "ida")
