@@ -4,7 +4,6 @@
 
 [![CI](https://github.com/muxover/goripper/actions/workflows/ci.yml/badge.svg)](https://github.com/muxover/goripper/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/muxover/goripper/cmd/goripper.svg)](https://pkg.go.dev/github.com/muxover/goripper/cmd/goripper)
-[![Go Report Card](https://goreportcard.com/badge/github.com/muxover/goripper)](https://goreportcard.com/report/github.com/muxover/goripper)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/muxover/goripper)](https://github.com/muxover/goripper/releases/latest)
 
@@ -16,7 +15,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.6.0` — Dynamic tracing: live function call, syscall, network, and file event capture; static+dynamic merge.
+> **Status:** `v0.6.5` — Bug-fix release: correct stdlib/runtime classification, clean trace output, scan-dir magic check, versioned script exports.
 
 ---
 

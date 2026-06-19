@@ -81,7 +81,12 @@ func newTraceCmd() *cobra.Command {
 
 			var collected []trace.Event
 
-			if jsonlOut {
+			if analyzeFlag {
+				// Consume events silently — only the merged analysis goes to w.
+				for ev := range eventCh {
+					collected = append(collected, ev)
+				}
+			} else if jsonlOut {
 				bw := bufio.NewWriter(w)
 				enc := json.NewEncoder(bw)
 				for ev := range eventCh {
@@ -109,7 +114,10 @@ func newTraceCmd() *cobra.Command {
 
 			if analyzeFlag {
 				trace.Merge(result, collected)
-				return writeOutputTo(result, w, commonFlags{jsonOut: jsonlOut}, output.TextOptions{})
+				if jsonlOut {
+					return output.WriteJSONL(w, result)
+				}
+				return writeOutputTo(result, w, commonFlags{}, output.TextOptions{})
 			}
 
 			if hotPath {

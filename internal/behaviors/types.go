@@ -14,6 +14,8 @@ const (
 	TagMemory    BehaviorTag = "MEMORY"
 	TagDNS       BehaviorTag = "DNS"
 	TagHTTP      BehaviorTag = "HTTP"
+	TagKeylog    BehaviorTag = "KEYLOG"
+	TagMiner     BehaviorTag = "MINER"
 )
 
 type TagRule struct {
@@ -132,5 +134,19 @@ var tagRules = []TagRule{
 			"golang.org/x/sys/windows.VirtualAlloc",
 			"golang.org/x/sys/windows.VirtualProtect",
 		},
+	},
+	{
+		Tag: TagKeylog,
+		CallTargets: []string{
+			"golang.org/x/sys/windows.SetWindowsHookEx",
+			"golang.org/x/sys/windows.GetAsyncKeyState",
+			"golang.org/x/sys/windows.GetKeyState",
+			"golang.org/x/sys/windows.GetKeyboardState",
+		},
+		StringPat: regexp.MustCompile(`(?i)(keylog|keystroke|GetAsyncKeyState|SetWindowsHookEx|GetKeyboardState)`),
+	},
+	{
+		Tag: TagMiner,
+		StringPat: regexp.MustCompile(`(?i)(stratum\+tcp|pool\.minergate|xmrpool|moneroocean|hashvault|nicehash|mining\.pool)`),
 	},
 }

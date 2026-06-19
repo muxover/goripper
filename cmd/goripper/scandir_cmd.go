@@ -117,17 +117,29 @@ func collectBinaries(root string, onlyGo bool) ([]string, error) {
 	return paths, err
 }
 
-// isExecutable does a best-effort check: on Windows all regular files are candidates;
-// on Unix we check the execute bit.
+// On Windows we read magic bytes instead of relying on the execute bit (which is always
+// set), so non-binary files like source code and docs are not passed to the analyzer.
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
-	if runtime.GOOS == "windows" {
-		return true
+	if runtime.GOOS != "windows" {
+		return info.Mode()&0o111 != 0
 	}
-	return info.Mode()&0o111 != 0
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var magic [4]byte
+	n, _ := f.Read(magic[:])
+	if n < 2 {
+		return false
+	}
+	// PE: "MZ"; ELF: 0x7F "ELF"
+	return (magic[0] == 0x4D && magic[1] == 0x5A) ||
+		(n == 4 && magic[0] == 0x7F && magic[1] == 0x45 && magic[2] == 0x4C && magic[3] == 0x46)
 }
 
 // Results are returned in an unspecified order (whichever finishes first).

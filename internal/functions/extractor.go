@@ -112,6 +112,15 @@ func ExtractPackageName(funcName string) string {
 		}
 	}
 
+	// "internal/abi.Kind" → "internal/abi": after the last "/" in a module path a dot
+	// introduces a type name, not another package segment — strip the TypeName suffix.
+	if idx := strings.LastIndex(pkg, "/"); idx >= 0 {
+		afterSlash := pkg[idx+1:]
+		if dotPos := strings.Index(afterSlash, "."); dotPos >= 0 {
+			pkg = pkg[:idx+1+dotPos]
+		}
+	}
+
 	return pkg
 }
 

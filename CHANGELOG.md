@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-06-19
+
+### Fixed
+- **Function package extraction — generics** (`internal/functions/extractor.go`): `slices.Sort[go.shape.string]` yielded package `"slices.breakPatternsCmpFunc[go.shape"`. Generic type-parameter suffixes are now stripped before dot-parsing.
+- **Function package extraction — method entries** (`internal/functions/extractor.go`): pclntab method entries like `hash.Hash.Size` yielded `"hash.Hash"` instead of `"hash"`, misclassifying stdlib interface methods as user functions. Dotted names with no slash are now reduced to their root component.
+- **Function package extraction — module path methods** (`internal/functions/extractor.go`): `internal/abi.Kind.String` yielded `"internal/abi.Kind"` instead of `"internal/abi"`. TypeName suffixes after the last `/` in a module path are now stripped.
+- **`internal/*` packages classified as stdlib instead of runtime** (`internal/functions/classifier.go`): `runtimePrefixes` had `"internal/"` (trailing slash) so `HasPrefix` against `"internal//"` never matched. Changed to `"internal"` — `internal/abi`, `internal/cpu`, `internal/bytealg` etc. now correctly count as runtime.
+- **Obfuscation false positives** (`internal/obfuscation/detect.go`): `FindDecryptorStubs` included stdlib and runtime functions in the high-fan-in heuristic. Now restricted to user-defined functions only.
+- **Threat classifier accuracy** (`internal/classify/classifier.go`): ransomware, keylogger, and miner detection used raw string pattern scanning. All three now require explicit behavior tags from the tagger (`KEYLOG`, `MINER`, `FILE_READ`+`CRYPTO`+obfuscation for ransomware), eliminating false positives.
+- **`trace --analyze` output mixing** (`cmd/goripper/trace_cmd.go`): raw events were written to the output destination before the merged analysis result. Events are now consumed silently; only the analysis result is written.
+- **`trace --analyze --jsonl` not emitting JSONL** (`cmd/goripper/trace_cmd.go`): merged analysis was written as pretty-printed JSON. Now calls `output.WriteJSONL`.
+- **`scan-dir` analyzing non-executables on Windows** (`cmd/goripper/scandir_cmd.go`): `isExecutable` returned `true` for every regular file. Now reads the first 4 bytes and only accepts PE (`MZ`) or ELF (`\x7fELF`) magic.
+- **Hardcoded `v0.4.0` in script exports** (`internal/output/ida_writer.go`, `internal/output/ghidra_writer.go`, `internal/yara/generator.go`): IDA, Ghidra, and YARA outputs always claimed v0.4.0. Now uses `version.Version` injected at build time.
+- **Windows tracer ASLR** (`internal/trace/windbg.go`, `cmd/goripper/trace_cmd.go`): breakpoints were placed at preferred image base addresses without accounting for ASLR. The tracer now reads `lpBaseOfImage` from `CREATE_PROCESS_DEBUG_EVENT` and slides all addresses accordingly.
+
 ## [0.6.0] - 2026-05-30
 
 ### Added
@@ -320,7 +335,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.6.5...HEAD
+[0.6.5]: https://github.com/muxover/goripper/compare/v0.6.0...v0.6.5
 [0.6.0]: https://github.com/muxover/goripper/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/muxover/goripper/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/muxover/goripper/compare/v0.3.0...v0.4.0

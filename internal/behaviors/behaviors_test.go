@@ -68,6 +68,19 @@ func TestTag_FileCalls(t *testing.T) {
 	assertTag(t, readTags, behaviors.TagFileRead)
 }
 
+func TestTag_KeylogCalls(t *testing.T) {
+	tags := tagsFor(t, "golang.org/x/sys/windows.GetAsyncKeyState")
+	assertTag(t, tags, behaviors.TagKeylog)
+}
+
+func TestTag_MinerStrings(t *testing.T) {
+	fn := functions.Function{Name: "myFunc", Package: "main"}
+	graph := makeGraph("myFunc", "net.Dial")
+	strs := []gstrings.ExtractedString{{Value: "stratum+tcp://pool.example.com:4444", ReferencedBy: []string{"myFunc"}}}
+	result := behaviors.Tag([]functions.Function{fn}, graph, strs)
+	assertTag(t, result[0].Tags, behaviors.TagMiner)
+}
+
 func TestTag_NoFalsePositives(t *testing.T) {
 	fn := functions.Function{Name: "myFunc", Package: "main"}
 	graph := makeGraph("myFunc", "fmt.Println")

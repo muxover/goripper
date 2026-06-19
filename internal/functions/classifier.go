@@ -7,7 +7,7 @@ import "strings"
 var runtimePrefixes = []string{
 	"runtime",
 	"runtime/internal",
-	"internal/",
+	"internal",
 	"reflect",
 	"sync",
 	"sync/atomic",

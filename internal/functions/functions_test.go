@@ -32,6 +32,10 @@ func TestClassifyPackageKind_Table(t *testing.T) {
 		{"mime.init.0", functions.PackageStdlib},
 		// slices generic: package is "slices", not "slices.breakPatternsCmpFunc[go.shape"
 		{"slices.breakPatternsCmpFunc[go.shape.string]", functions.PackageStdlib},
+		// internal/* packages must be runtime, not stdlib
+		{"internal/abi.BoundsDecode", functions.PackageRuntime},
+		// method in internal package: "internal/abi.Kind.String" → package "internal/abi" → runtime
+		{"internal/abi.Kind.String", functions.PackageRuntime},
 	}
 
 	for _, tc := range cases {
