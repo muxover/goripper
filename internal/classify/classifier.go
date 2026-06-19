@@ -1,7 +1,5 @@
 package classify
 
-import "strings"
-
 type Class string
 
 const (
@@ -66,19 +64,6 @@ func Classify(in Input) Result {
 		indicators = append(indicators, "url_count="+itoa(in.URLCount))
 	}
 
-	hasMiningURL := containsAny(in.StringValues, []string{
-		"pool.minergate.com", "stratum+tcp", "xmrpool", "moneroocean", "hashvault",
-	})
-
-	hasKeylogPat := containsAny(in.StringValues, []string{
-		"keylog", "keystroke", "GetAsyncKeyState", "SetWindowsHookEx",
-	})
-
-	hasFileEnum := containsAny(in.StringValues, []string{
-		".doc", ".docx", ".xls", ".xlsx", ".pdf", ".jpg", ".png",
-		"filepath.Walk", "os.ReadDir",
-	})
-
 	switch {
 	case tagSet["NETWORK"] && tagSet["EXECUTION"] && (tagSet["FILE_READ"] || tagSet["FILE_WRITE"]) && in.HasConcurrency:
 		return Result{ClassRAT, confidence(3, len(indicators)), indicators}
@@ -86,16 +71,20 @@ func Classify(in Input) Result {
 	case tagSet["NETWORK"] && tagSet["FILE_WRITE"] && in.URLCount >= 1 && !tagSet["EXECUTION"]:
 		return Result{ClassDownloader, confidence(2, len(indicators)), indicators}
 
-	case tagSet["CRYPTO"] && tagSet["FILE_WRITE"] && hasFileEnum:
-		return Result{ClassRansomware, confidence(3, len(indicators)), indicators}
+	// Ransomware: encrypts files (CRYPTO) with both read and write, shows obfuscation,
+	// and has no outbound network (most ransomware is offline after initial payload drop).
+	case tagSet["CRYPTO"] && tagSet["FILE_READ"] && tagSet["FILE_WRITE"] && !tagSet["NETWORK"] && in.ObfScore > 0.25:
+		return Result{ClassRansomware, confidence(2, len(indicators)), indicators}
 
 	case tagSet["NETWORK"] && tagSet["DNS"] && tagSet["CRYPTO"] && in.HasConcurrency:
 		return Result{ClassC2Agent, confidence(2, len(indicators)), indicators}
 
-	case tagSet["FILE_WRITE"] && hasKeylogPat:
+	// Keylogger: requires an explicit KEYLOG behavior tag produced by the tagger.
+	case tagSet["KEYLOG"] && tagSet["FILE_WRITE"]:
 		return Result{ClassKeylogger, confidence(2, len(indicators)), indicators}
 
-	case tagSet["NETWORK"] && hasMiningURL:
+	// Cryptominer: requires a MINER behavior tag produced by the tagger.
+	case tagSet["MINER"] && tagSet["NETWORK"]:
 		return Result{ClassCryptominer, confidence(2, len(indicators)), indicators}
 
 	case !tagSet["NETWORK"] && !tagSet["EXECUTION"] && !tagSet["MEMORY"]:
@@ -104,18 +93,6 @@ func Classify(in Input) Result {
 	default:
 		return Result{ClassUnknown, "low", indicators}
 	}
-}
-
-func containsAny(strs []string, patterns []string) bool {
-	for _, s := range strs {
-		sl := strings.ToLower(s)
-		for _, p := range patterns {
-			if strings.Contains(sl, strings.ToLower(p)) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func confidence(matchedSignals, indicatorCount int) string {

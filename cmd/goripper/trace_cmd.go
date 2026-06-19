@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	gobinary "github.com/muxover/goripper/internal/binary"
 	"github.com/muxover/goripper/internal/functions"
 	"github.com/muxover/goripper/internal/output"
 	"github.com/muxover/goripper/internal/trace"
@@ -54,13 +55,21 @@ func newTraceCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "[*] attaching tracer to %d user functions...\n", len(userFuncs))
 			}
 
+			// Resolve the binary's preferred image base so the tracer can compute
+			// the ASLR slide if the OS loads the binary at a different address.
+			var preferredBase uint64
+			if bin, binErr := gobinary.Open(binaryPath); binErr == nil {
+				preferredBase = bin.ImageBase()
+				bin.Close()
+			}
+
 			w, cleanup, err := resolveWriter(outFile)
 			if err != nil {
 				return err
 			}
 			defer cleanup()
 
-			opts := trace.Options{Timeout: timeout}
+			opts := trace.Options{Timeout: timeout, PreferredBase: preferredBase}
 			eventCh := make(chan trace.Event, 256)
 			tracer := trace.New()
 

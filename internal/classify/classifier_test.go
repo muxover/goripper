@@ -31,10 +31,12 @@ func TestClassify_Downloader(t *testing.T) {
 
 func TestClassify_Ransomware(t *testing.T) {
 	in := Input{
-		BehaviorTags: []string{"CRYPTO", "FILE_WRITE"},
+		// No NETWORK — ransomware is typically offline after payload drop.
+		BehaviorTags: []string{"CRYPTO", "FILE_WRITE", "FILE_READ"},
 		HasCrypto:    true,
 		HasFileWrite: true,
-		StringValues: []string{".docx", ".xlsx", ".pdf"},
+		HasFileRead:  true,
+		ObfScore:     0.7, // ransomware is heavily obfuscated
 	}
 	r := Classify(in)
 	if r.Class != ClassRansomware {
@@ -66,9 +68,9 @@ func TestClassify_Unknown(t *testing.T) {
 
 func TestClassify_Cryptominer(t *testing.T) {
 	in := Input{
-		BehaviorTags: []string{"NETWORK"},
+		// MINER tag is produced by the behavior tagger when mining pool calls are found.
+		BehaviorTags: []string{"NETWORK", "MINER"},
 		HasNetwork:   true,
-		StringValues: []string{"stratum+tcp://pool.minexmr.com:4444"},
 	}
 	r := Classify(in)
 	if r.Class != ClassCryptominer {

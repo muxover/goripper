@@ -22,6 +22,16 @@ func TestClassifyPackageKind_Table(t *testing.T) {
 		{"runtime/cgo.crosscall2", functions.PackageCGo},
 		{"github.com/foo/bar.Do", functions.PackageUser},
 		{"github.com/muxover/goripper/pkg/analyzer.New", functions.PackageUser},
+		// interface method: package is "hash", not "hash.Hash"
+		{"hash.Hash.Size", functions.PackageStdlib},
+		// defer wrapper: package is "mime", not "mime.setExtensionType"
+		{"mime.setExtensionType.deferwrap1", functions.PackageStdlib},
+		// generic closure: package is "mime", not "mime.FormatMediaType"
+		{"mime.FormatMediaType.Keys[go.shape.map[string]string].func1", functions.PackageStdlib},
+		// package init: package is "mime", not "mime.init"
+		{"mime.init.0", functions.PackageStdlib},
+		// slices generic: package is "slices", not "slices.breakPatternsCmpFunc[go.shape"
+		{"slices.breakPatternsCmpFunc[go.shape.string]", functions.PackageStdlib},
 	}
 
 	for _, tc := range cases {

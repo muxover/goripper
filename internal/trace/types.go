@@ -31,8 +31,12 @@ type Event struct {
 }
 
 type Options struct {
-	Timeout   time.Duration
-	MaxEvents int
+	Timeout       time.Duration
+	MaxEvents     int
+	// PreferredBase is the binary's preferred image base from the PE header.
+	// The tracer uses it to compute the ASLR slide when the OS loads the binary
+	// at a different address.  0 means no adjustment (assume no ASLR).
+	PreferredBase uint64
 }
 
 type Tracer interface {

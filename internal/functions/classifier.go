@@ -79,6 +79,11 @@ func classifyPackage(pkg string) PackageKind {
 		return PackageRuntime // likely internal runtime stub
 	}
 
+	// The "main" package is always user code.
+	if pkg == "main" {
+		return PackageUser
+	}
+
 	// CGo bridge functions
 	if strings.HasPrefix(pkg, "_cgo") || pkg == "runtime/cgo" {
 		return PackageCGo
@@ -101,8 +106,9 @@ func classifyPackage(pkg string) PackageKind {
 		}
 	}
 
-	// Check if it looks like a stdlib package (no dots in import path except for subpkgs)
-	// Stdlib packages never have a domain-like structure (e.g., "github.com/...")
+	// Packages without dots and without a known user-domain prefix are stdlib.
+	// However, only apply this heuristic when the package name is not "main" (already
+	// handled above) and does not look like a module path (no domain-style dot).
 	if !strings.Contains(pkg, ".") || isKnownStdlibRoot(pkg) {
 		return PackageStdlib
 	}

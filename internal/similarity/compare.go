@@ -2,6 +2,7 @@ package similarity
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/muxover/goripper/internal/output"
 )
@@ -26,7 +27,14 @@ func Compare(a, b *output.AnalysisResult) CompareResult {
 	for hash, fn := range aMap {
 		if _, ok := bMap[hash]; ok {
 			shared++
-			pkgSet[fn.Package] = true
+			// Strip generic type-parameter suffixes: "slices.Sort[go.shape...]" → "slices"
+			pkg := fn.Package
+			if idx := strings.Index(pkg, "["); idx > 0 {
+				pkg = pkg[:idx]
+			}
+			if pkg != "" {
+				pkgSet[pkg] = true
+			}
 		}
 	}
 

@@ -88,6 +88,11 @@ func FindDecryptorStubs(funcs []functions.Function, graph *callgraph.CallGraph) 
 
 	var stubs []StubMatch
 	for _, fn := range funcs {
+		// Only user-defined functions can be garble decryptor stubs; runtime and
+		// stdlib functions are inherently high-fan-in and must never be flagged.
+		if fn.PackageKind != functions.PackageUser {
+			continue
+		}
 		count := callerCount[fn.Name]
 		if count < 50 {
 			continue

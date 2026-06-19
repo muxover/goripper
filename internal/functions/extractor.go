@@ -61,6 +61,11 @@ func ExtractPackageName(funcName string) string {
 		}
 	}
 
+	// Strip generic type-parameter suffix: "slices.Sort[go.shape.string]" → "slices.Sort"
+	if idx := strings.Index(funcName, "["); idx > 0 {
+		funcName = funcName[:idx]
+	}
+
 	parts := strings.Split(funcName, ".")
 	if len(parts) == 1 {
 		return funcName
@@ -94,6 +99,16 @@ func ExtractPackageName(funcName string) string {
 			pkg = pkg[:lastDot]
 		} else {
 			break
+		}
+	}
+
+	// "hash.Hash" or "mime.setExtensionType" → these are package.TypeName paths from
+	// method/defer-wrapper entries in pclntab.  Module paths always contain at least
+	// one "/" (e.g. "github.com/foo/bar"), so a dotted name with no slash is always
+	// a simple stdlib package.TypeName — strip to the root component.
+	if strings.Contains(pkg, ".") && !strings.Contains(pkg, "/") {
+		if idx := strings.Index(pkg, "."); idx > 0 {
+			pkg = pkg[:idx]
 		}
 	}
 
