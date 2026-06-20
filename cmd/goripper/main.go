@@ -47,6 +47,7 @@ intelligence: function names, call graph, strings, type info, and more.`,
 		compareCmd,
 		scandirCmd,
 		newTraceCmd(),
+		newDecompileCmd(),
 		newVersionCmd(),
 	)
 

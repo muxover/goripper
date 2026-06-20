@@ -136,6 +136,8 @@ binary file
 | cluster | `internal/cluster` | Single-linkage clustering on pairwise similarity scores | `Group` |
 | modules | `internal/modules` | Module dependency graph via `debug/buildinfo`; bundled CVE table | `ModuleInfo`, `Dependency` |
 | trace | `internal/trace` | Live tracing: event types, Linux/macOS/Windows backends, static+dynamic merge, hot path | `Event`, `Tracer`, `Options` |
+| ir | `internal/ir` | Three-address IR lifter (x86_64 + ARM64), SSA renaming, variable recovery, type propagation | `IRFunc`, `IRBlock`, `IRInstr`, `OpKind` |
+| decompile | `internal/decompile` | C emitter: groups IRFuncs by package, emits `.c` + `structs.h` + `stubs.h` | `Options` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
 | output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
@@ -326,6 +328,87 @@ The result is always populated. A binary with no behavior tags receives `TOOL` w
 5. Populate the result in `buildOutput()` and add the output type to `output.AnalysisResult`.
 
 The `safeRun` wrapper handles panics automatically — your stage does not need to recover from panics itself.
+
+---
+
+## Decompile Pipeline (`goripper decompile`)
+
+`goripper decompile <binary>` lifts each user-defined function to a C approximation. The output is a human-readable analysis aid, not guaranteed to compile without stub editing.
+
+```
+┌─────────────────┐
+│   binary open   │  gobinary.Open → arch detection
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   pclntab parse │  gopclntab.Parse → function list
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  classify funcs │  functions.Extract + Classify → filter PackageUser only
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   CFG build     │  cfg.Build per function (falls back to stub on failure)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   IR lift       │  ir.LiftArch → three-address IR (x86_64 or ARM64)
+└────────┬────────┘       re-decodes raw bytes via x86asm/arm64asm for full operand detail
+         │
+         ▼
+┌─────────────────┐
+│   SSA rename    │  ir.RenameVars → versioned names (_rax_v0, _rax_v1, …)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  var recovery   │  ir.RecoverVars → param0/param1, i/j/k counters, v0/v1 locals
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  type propagate │  ir.PropTypes → forward C type assignment (int64_t, void*, GoString)
+└────────┬────────┘       seeded from goRuntimeSigs + heuristics
+         │
+         ▼
+┌─────────────────┐
+│   C emit        │  decompile.Emit → one .c per package + structs.h + stubs.h
+└─────────────────┘
+```
+
+### IR Instruction Set
+
+`IRInstr.Op` (type `OpKind`) covers the operations needed to express x86_64 and ARM64 semantics in three-address form:
+
+| Op | Meaning | Fields used |
+|----|---------|-------------|
+| `OpAssign` | `dst = src[0]` | Dst, Src[0] |
+| `OpLoad` | `dst = *src[0]` | Dst, Src[0] |
+| `OpStore` | `*dst = src[0]` | Dst, Src[0] |
+| `OpArith` | `dst = src[0] <op> src[1]` | Dst, Src, Meta (add/sub/mul/…) |
+| `OpUnary` | `dst = <op> src[0]` | Dst, Src[0], Meta (neg/not) |
+| `OpCall` | `dst = Target(src…)` | Dst, Target, Src |
+| `OpPhi` | `dst = phi(src…)` | Dst, Src |
+| `OpIf` | `if cond goto Label else Label2` | Meta (cond expr), Label, Label2 |
+| `OpGoto` | `goto Label` | Label |
+| `OpReturn` | `return src…` | Src |
+| `OpLabel` | `Label:` | Label |
+| `OpComment` | `/* Meta */` | Meta |
+
+### Output Layout
+
+```
+out/
+  main.c          — user package "main"
+  net_http.c      — package "net/http" (sanitized to "net_http")
+  structs.h       — GoString, GoSlice, GoIface, _type, error
+  stubs.h         — extern declarations for all called external functions
+```
 
 ---
 

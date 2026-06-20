@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-21
+
+### Added
+- **`goripper decompile <binary>`** (`cmd/goripper/decompile_cmd.go`): **[EXPERIMENTAL]** lifts every user-defined function to three-address IR and emits C skeleton files. Output is structural, not yet fully readable — string constants, stack variables, and control flow reconstruction are planned for v0.8.0. Flags: `-o/--output` (output dir, default `out/`), `-v/--verbose`, `--max-funcs N`.
+- **IR lifter** (`internal/ir/lift.go`, `internal/ir/lift_x86.go`, `internal/ir/lift_aarch64.go`): converts CFG basic blocks to three-address IR (`IRFunc` / `IRBlock` / `IRInstr`). x86_64 re-decodes raw bytes via `golang.org/x/arch/x86/x86asm`; ARM64 via `arm64asm`. Handles MOV/LEA/arithmetic/CMP+Jcc/CALL/RET; falls back to Intel-syntax comment for unknown opcodes.
+- **SSA renaming** (`internal/ir/ssa.go`): block-level variable renaming — every write to a register variable (`_rax`, `_rbx`, …) creates a versioned name (`_rax_v0`, `_rax_v1`); phi-like assignments are inserted at multi-predecessor block entries.
+- **Variable recovery** (`internal/ir/varrecov.go`): maps first-version param-register SSA names to `param0`/`param1`/…; detects loop-counter increments by small constant and names them `i`/`j`/`k`; remaining SSA vars become `v0`/`v1`/….
+- **Type propagation** (`internal/ir/typeprop.go`): single-pass forward analysis assigns C types — `void*` for loads and `runtime.new*`/`runtime.make*` call returns, `int64_t` for arithmetic, known-signature types for `fmt.Println`, `runtime.makeslice`, etc.
+- **C emitter** (`internal/decompile/c_emitter.go`): groups `IRFunc` results by package, writes one `.c` file per package plus `structs.h` (Go runtime type definitions: `GoString`, `GoSlice`, `GoIface`, `_type`, `error`) and `stubs.h` (extern declarations for all called external functions).
+- `internal/ir` package with types `IRFunc`, `IRBlock`, `IRInstr`, `OpKind` (12 opcodes: Assign, Load, Store, Arith, Unary, Call, Phi, If, Goto, Return, Label, Comment).
+- `internal/decompile` package with `Emit(funcs, Options)` entry point.
+
 ## [0.6.5] - 2026-06-19
 
 ### Fixed
@@ -335,7 +347,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/muxover/goripper/compare/v0.6.5...v0.7.0
 [0.6.5]: https://github.com/muxover/goripper/compare/v0.6.0...v0.6.5
 [0.6.0]: https://github.com/muxover/goripper/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/muxover/goripper/compare/v0.4.0...v0.5.0
