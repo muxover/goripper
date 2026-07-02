@@ -137,7 +137,7 @@ binary file
 | modules | `internal/modules` | Module dependency graph via `debug/buildinfo`; bundled CVE table | `ModuleInfo`, `Dependency` |
 | trace | `internal/trace` | Live tracing: event types, Linux/macOS/Windows backends, static+dynamic merge, hot path | `Event`, `Tracer`, `Options` |
 | ir | `internal/ir` | Three-address IR lifter (x86_64 + ARM64), SSA renaming, variable recovery, type propagation | `IRFunc`, `IRBlock`, `IRInstr`, `OpKind` |
-| decompile | `internal/decompile` | C and Go emitters: `--lang c` emits `.c` + `structs.h` + `stubs.h`; `--lang go` emits a compilable Go module with runtime pattern lifting | `Options`, `Emit`, `EmitGo` |
+| decompile | `internal/decompile` | C and Go emitters (experimental, structural aid): `--lang c` emits `.c` + `structs.h` + `stubs.h`; `--lang go` emits Go-shaped source with runtime pattern lifting | `Options`, `Emit`, `EmitGo` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
 | output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
@@ -425,7 +425,7 @@ out/
     stubs.go          — stub bodies for unresolved external calls
 ```
 
-`go build ./...` in the output directory compiles without errors. Stub functions panic on call.
+The output is structural — a reading aid, not faithful or compilable source. Stub files stand in for unresolved external calls.
 
 ---
 

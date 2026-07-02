@@ -240,7 +240,7 @@ Recovered types:      203
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-o`, `--output <dir>` | `out` | Output directory |
-| `--lang <lang>` | `c` | Output language: `c` (skeleton files) or `go` (compilable module) |
+| `--lang <lang>` | `c` | Output language: `c` (skeleton files) or `go` (Go-shaped output) |
 | `--max-funcs N` | `0` | Limit functions decompiled (0 = all) |
 | `-v`, `--verbose` | `false` | Log progress every 100 functions |
 
