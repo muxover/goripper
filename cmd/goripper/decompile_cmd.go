@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	gobinary "github.com/muxover/goripper/internal/binary"
 	"github.com/muxover/goripper/internal/cfg"
@@ -21,14 +22,15 @@ func newDecompileCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "decompile <binary>",
-		Short: "Lift Go binary functions to IR and emit C or Go source",
-		Long: `Lift each user-defined function in a Go binary to three-address IR and emit
-source files. Two output languages are supported:
+		Short: "[EXPERIMENTAL] Lift Go binary functions to C or Go (structural aid)",
+		Long: `[EXPERIMENTAL] Lift each user-defined function to three-address IR and emit C or
+Go. The output is a structural aid for reading control flow, not a faithful or
+compilable reconstruction — register/stack math and unresolved logic are
+approximated or elided.
 
-  --lang c  (default) — C skeleton files; structural aid, not fully readable source.
-  --lang go           — Go module; runtime patterns (goroutine, defer, channel ops,
-                        panic/recover, make) lifted to Go idioms. Per-package stubs.go
-                        holds stub bodies so the output compiles with: go build ./...
+  --lang c  (default) — C skeleton files.
+  --lang go           — Go files; runtime patterns (goroutine, defer, channel ops,
+                        panic/recover, make) lifted to Go idioms where recognized.
 
 C output layout:
   out/
@@ -58,6 +60,9 @@ Go output layout:
 }
 
 func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int, lang string) error {
+	fmt.Fprintln(os.Stderr, "[EXPERIMENTAL] decompile output is a structural aid for reading "+
+		"control flow, not a faithful or compilable reconstruction.")
+
 	bin, err := gobinary.Open(binaryPath)
 	if err != nil {
 		return fmt.Errorf("open binary: %w", err)

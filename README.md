@@ -15,7 +15,7 @@
 
 GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without source code. It parses Go-specific metadata, disassembles code, extracts strings, recovers types and interface implementations, detects concurrency patterns, and tags suspicious behaviors — outputting structured JSON or human-readable reports. Built for security researchers, reverse engineers, and incident responders.
 
-> **Status:** `v0.8.0` — Go source reconstruction: lift Go binary functions to a compilable Go module with runtime pattern recognition.
+> **Status:** `v0.8.0` — decompilation (`decompile`) is **`[EXPERIMENTAL]`**: it emits a rough structural aid (C or Go) for understanding control flow, **not faithful or compilable source**. A readable-pseudocode decompiler lands in v0.9.0+. Everything else (analysis, tracing, diffing, export) is stable.
 
 ---
 
@@ -53,7 +53,7 @@ GoRipper analyzes compiled Go binaries (PE `.exe`, ELF, and Mach-O) without sour
 - **Live Tracing** — `goripper trace` attaches to a running binary and streams function calls, syscalls, network connections, and file access as JSONL events. Platform backends: Linux tracefs uprobes, macOS dtrace, Windows Debug API (INT3 breakpoints).
 - **Static + Dynamic Merge** — Feed a captured trace back into `analyze --trace-data` to annotate every function with `call_count`, `total_time_ns`, and `is_hot`; surfaces observed network addresses, file paths, and syscalls.
 - **Hot Path Analysis** — `--hot-path` prints the execution call tree with percentage annotations after a trace run.
-- **Decompile to C or Go** *(experimental)* — `goripper decompile` lifts user-defined functions through a three-address IR (x86_64 + ARM64), SSA renaming, and type propagation. `--lang c` (default) emits `.c` skeletons per package plus `structs.h` and `stubs.h`. `--lang go` emits a compilable Go module: `go.mod` + per-package `.go` files with 14 runtime patterns lifted to Go idioms (goroutine, defer, panic/recover, channel ops, make) + `stubs.go` so `go build ./...` succeeds.
+- **Decompile to C or Go** **`[EXPERIMENTAL]`** — `goripper decompile` lifts user-defined functions through a three-address IR (x86_64 + ARM64), SSA renaming, and type propagation, then emits C (`--lang c`, default) or Go (`--lang go`) as a **structural aid for reading control flow**. The output is **not faithful and not a reliable reconstruction** — register/stack math and unresolved logic are approximated or elided, so it should be read for understanding, not compiled or trusted as equivalent to the original. A production-grade readable-pseudocode decompiler is the v0.9.0+ work.
 - **JSON + JSONL + Text + HTML Output** — Machine-readable JSON, streaming JSONL for pipelines, analyst-friendly tabular text, or self-contained HTML.
 
 ---
@@ -146,7 +146,7 @@ Recovered types:      203
 | `goripper compare <binary1> <binary2>` | Compare two binaries by code similarity — shared functions, packages, score |
 | `goripper scan-dir <directory>` | Analyze all Go binaries in a directory in parallel |
 | `goripper trace <binary>` | Trace live function calls, syscalls, network, and file events at runtime |
-| `goripper decompile <binary>` | **[EXPERIMENTAL]** Lift functions to C skeletons (`--lang c`, default) or a compilable Go module (`--lang go`) via IR + SSA |
+| `goripper decompile <binary>` | **[EXPERIMENTAL]** Lift functions to C (`--lang c`, default) or Go (`--lang go`) as a structural aid via IR + SSA — for reading control flow, not faithful/compilable source |
 | `goripper completion <shell>` | Generate shell completion for `bash`, `zsh`, `fish`, or `powershell` |
 
 ---
@@ -305,6 +305,7 @@ goripper/
 
 - Standard Go toolchain only — AGC/TinyGo binaries are not supported
 - CFG pseudocode is slow on binaries with 10,000+ functions
+- `decompile` is **`[EXPERIMENTAL]`** — its C/Go output is a structural aid for reading control flow, not a faithful or compilable reconstruction. A readable-pseudocode decompiler lands in v0.9.0+.
 
 ---
 

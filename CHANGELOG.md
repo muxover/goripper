@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`decompile` relabeled `[EXPERIMENTAL]`** across the CLI, README, and this changelog. The C/Go output is a structural aid for reading control flow — **not a faithful or compilable reconstruction**. The v0.8.0 notes below oversold it as "compilable Go source reconstruction"; this correction sets honest expectations. A production-grade readable-pseudocode decompiler is the v0.9.0+ work.
+- `goripper decompile` now prints an experimental-scope notice to stderr before emitting output.
+
 ## [0.8.0] - 2026-07-02
+
+> **Correction (post-release):** this feature is **`[EXPERIMENTAL]`**. The emitted Go/C is a rough structural aid, **not faithful or compilable source** — the "compilable module" framing below overstated it. See `[Unreleased]` and the v0.9.0+ roadmap for the real decompiler.
 
 ### Added
 - **Go source reconstruction** (`internal/decompile/go_emitter.go`, `--lang go` on `decompile`): `goripper decompile --lang go` emits a compilable Go module under the output directory. `go.mod` at the root declares `module recovered; go 1.21`. One subdirectory per user package; per-package `<pkg>.go` holds recovered function bodies; per-package `stubs.go` holds stub bodies for all unresolved external calls so `go build ./...` compiles.
