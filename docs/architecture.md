@@ -137,7 +137,7 @@ binary file
 | modules | `internal/modules` | Module dependency graph via `debug/buildinfo`; bundled CVE table | `ModuleInfo`, `Dependency` |
 | trace | `internal/trace` | Live tracing: event types, Linux/macOS/Windows backends, static+dynamic merge, hot path | `Event`, `Tracer`, `Options` |
 | ir | `internal/ir` | Three-address IR lifter (x86_64 + ARM64), SSA renaming, variable recovery, type propagation | `IRFunc`, `IRBlock`, `IRInstr`, `OpKind` |
-| decompile | `internal/decompile` | C emitter: groups IRFuncs by package, emits `.c` + `structs.h` + `stubs.h` | `Options` |
+| decompile | `internal/decompile` | C and Go emitters: `--lang c` emits `.c` + `structs.h` + `stubs.h`; `--lang go` emits a compilable Go module with runtime pattern lifting | `Options`, `Emit`, `EmitGo` |
 | analyzer | `pkg/analyzer` | Pipeline orchestration, crash-safe stage runner | `Analyzer`, `Options` |
 | output | `internal/output` | JSON, JSONL, text, HTML, IDA, and Ghidra writers | `AnalysisResult`, `TextOptions` |
 | diff | `internal/diff` | Binary-to-binary comparison | `Result` |
@@ -377,8 +377,8 @@ The `safeRun` wrapper handles panics automatically — your stage does not need 
          │
          ▼
 ┌─────────────────┐
-│   C emit        │  decompile.Emit → one .c per package + structs.h + stubs.h
-└─────────────────┘
+│     emit        │  --lang c (default): decompile.Emit → one .c per package + structs.h + stubs.h
+└─────────────────┘  --lang go:          decompile.EmitGo → go.mod + per-package <pkg>.go + stubs.go
 ```
 
 ### IR Instruction Set
@@ -402,6 +402,8 @@ The `safeRun` wrapper handles panics automatically — your stage does not need 
 
 ### Output Layout
 
+**`--lang c` (default):**
+
 ```
 out/
   main.c          — user package "main"
@@ -409,6 +411,21 @@ out/
   structs.h       — GoString, GoSlice, GoIface, _type, error
   stubs.h         — extern declarations for all called external functions
 ```
+
+**`--lang go`:**
+
+```
+out/
+  go.mod              — module recovered; go 1.21
+  main/
+    main.go           — recovered main package functions
+    stubs.go          — stub bodies for unresolved external calls
+  net/http/
+    http.go           — recovered net/http package functions
+    stubs.go          — stub bodies for unresolved external calls
+```
+
+`go build ./...` in the output directory compiles without errors. Stub functions panic on call.
 
 ---
 

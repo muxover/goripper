@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-02
+
+### Added
+- **Go source reconstruction** (`internal/decompile/go_emitter.go`, `--lang go` on `decompile`): `goripper decompile --lang go` emits a compilable Go module under the output directory. `go.mod` at the root declares `module recovered; go 1.21`. One subdirectory per user package; per-package `<pkg>.go` holds recovered function bodies; per-package `stubs.go` holds stub bodies for all unresolved external calls so `go build ./...` compiles.
+- **14 runtime pattern lifts**: `runtime.gopanic` → `panic(v)`, `runtime.gorecover` → `recover()`, `runtime.newproc` → goroutine spawn via `go func(){}()`, `runtime.deferprocStack`/`runtime.deferproc` → `defer func(){}()`, `runtime.deferreturn` suppressed (implicit), `runtime.chansend1` → `ch <- v`, `runtime.chanrecv1` → `v = <-ch`, `runtime.makeslice`/`runtime.makemap`/`runtime.makechan` → the corresponding `make(...)` call, `runtime.convT2I`/`runtime.convT64`/`runtime.convTstring` → `any(v)`.
+- **Go type mapping**: C typeprop types mapped to Go equivalents (`int64_t` → `int64`, `uint64_t` → `uint64`, `void*`/`*_type` → `unsafe.Pointer`, `GoString` → `string`, `GoSlice` → `[]byte`, `GoIface` → `any`, `error` → `error`).
+- **Unused-variable suppression**: locals emitted as `var (v0 int64; ...)` followed by `_ = []any{v0, ...}` so SSA variables not read on all paths do not fail `go build`.
+- **Unused-import guard**: `var _ unsafe.Pointer` in every package file keeps the `unsafe` import active.
+- **Unused-label elision**: `collectReferencedLabels` pass emits only labels that are targets of a `goto` or branch — unreachable labels are dropped.
+- **Go keyword collision avoidance**: `init` → `_init`; all Go keywords prefixed with `_` when they appear as recovered function names.
+- **Duplicate name disambiguation**: functions sharing the same short name within a package are suffixed `_1`, `_2`, etc.
+- **`func main()` injection**: the `main` package always receives `func main() {}` if no `main` function was recovered.
+- **`--lang` flag** on `goripper decompile`: `--lang c` (default, unchanged) emits C skeletons; `--lang go` emits the Go module.
+
 ## [0.7.0] - 2026-06-21
 
 ### Added
@@ -347,7 +361,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI subcommands: `analyze`, `functions`, `strings`, `callgraph`.
 - Filters: `--only-user`, `--no-runtime`, `--pkg`, `--type`, `--depth`.
 
-[Unreleased]: https://github.com/muxover/goripper/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/muxover/goripper/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/muxover/goripper/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/muxover/goripper/compare/v0.6.5...v0.7.0
 [0.6.5]: https://github.com/muxover/goripper/compare/v0.6.0...v0.6.5
 [0.6.0]: https://github.com/muxover/goripper/compare/v0.5.0...v0.6.0

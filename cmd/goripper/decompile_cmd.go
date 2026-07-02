@@ -21,36 +21,43 @@ func newDecompileCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "decompile <binary>",
-		Short: "[EXPERIMENTAL] Lift Go binary functions to IR and emit C skeletons",
-		Long: `[EXPERIMENTAL] Lift each user-defined function in a Go binary to three-address IR
-and emit C skeleton files. Output is a structural aid for analysis — not readable
-source. Variable names, string constants, and control flow are not yet recovered.
+		Short: "Lift Go binary functions to IR and emit C or Go source",
+		Long: `Lift each user-defined function in a Go binary to three-address IR and emit
+source files. Two output languages are supported:
 
-Useful for: seeing what external functions a function calls (stubs.h), rough
-control flow block count, and as the foundation for v0.8.0 full decompilation
-(string resolution, if/else reconstruction, Go runtime pattern recognition).
+  --lang c  (default) — C skeleton files; structural aid, not fully readable source.
+  --lang go           — Go module; runtime patterns (goroutine, defer, channel ops,
+                        panic/recover, make) lifted to Go idioms. Per-package stubs.go
+                        holds stub bodies so the output compiles with: go build ./...
 
-Output directory layout:
+C output layout:
   out/
     <package>.c   — one file per user package
     structs.h     — Go runtime type definitions (GoString, GoSlice, GoIface)
-    stubs.h       — extern declarations for all referenced external functions`,
+    stubs.h       — extern declarations for referenced external functions
+
+Go output layout:
+  out/
+    go.mod              — module "recovered"; go 1.21
+    <package>/
+      <pkg>.go          — recovered package source
+      stubs.go          — stub bodies for unresolved external calls`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDecompile(args[0], outDir, verbose, maxFuncs)
+			lang, _ := cmd.Flags().GetString("lang")
+			return runDecompile(args[0], outDir, verbose, maxFuncs, lang)
 		},
 	}
 
-	cmd.Flags().StringVarP(&outDir, "output", "o", "out", "output directory for .c files")
+	cmd.Flags().StringVarP(&outDir, "output", "o", "out", "output directory")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose progress logging")
 	cmd.Flags().IntVar(&maxFuncs, "max-funcs", 0, "limit number of functions decompiled (0 = all)")
-	// --lang is reserved for future language targets; only C is supported now.
-	cmd.Flags().String("lang", "c", "output language (currently only 'c' is supported)")
+	cmd.Flags().String("lang", "c", "output language: c or go")
 
 	return cmd
 }
 
-func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int) error {
+func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int, lang string) error {
 	bin, err := gobinary.Open(binaryPath)
 	if err != nil {
 		return fmt.Errorf("open binary: %w", err)
@@ -108,7 +115,6 @@ func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int) error {
 		addrToName[fn.Addr] = fn.Name
 	}
 
-	// Lift each user function.
 	var irFuncs []*ir.IRFunc
 	for i, fn := range userFuncs {
 		if verbose && i%100 == 0 {
@@ -117,7 +123,6 @@ func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int) error {
 
 		c, cfgErr := cfg.Build(fn, textData, textVA, d)
 		if cfgErr != nil || c == nil || len(c.Blocks) == 0 {
-			// Emit a stub for functions we can't lift.
 			stub := &ir.IRFunc{
 				Name:    fn.Name,
 				Package: fn.Package,
@@ -144,9 +149,17 @@ func runDecompile(binaryPath, outDir string, verbose bool, maxFuncs int) error {
 		irFuncs = append(irFuncs, f)
 	}
 
+	opts := decompile.Options{OutDir: outDir, Lang: lang}
+
+	if lang == "go" {
+		if verbose {
+			log.Printf("[*] emitting Go module to %s/", outDir)
+		}
+		return decompile.EmitGo(irFuncs, opts)
+	}
+
 	if verbose {
 		log.Printf("[*] emitting C to %s/", outDir)
 	}
-
-	return decompile.Emit(irFuncs, decompile.Options{OutDir: outDir})
+	return decompile.Emit(irFuncs, opts)
 }

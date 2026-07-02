@@ -13,6 +13,7 @@ import (
 
 type Options struct {
 	OutDir string
+	Lang   string // "c" (default) or "go"
 }
 
 func Emit(funcs []*ir.IRFunc, opts Options) error {
