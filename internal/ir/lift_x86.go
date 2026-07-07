@@ -219,7 +219,11 @@ func x86ArgStr(arg x86asm.Arg, va uint64, addrToName map[uint64]string) string {
 		if a == 0 {
 			return "0x0"
 		}
-		return fmt.Sprintf("0x%x", int64(a))
+		v := int64(a)
+		if v < 0 {
+			return fmt.Sprintf("-0x%x", -v)
+		}
+		return fmt.Sprintf("0x%x", v)
 	case x86asm.Mem:
 		return x86MemExpr(a, va, addrToName)
 	case x86asm.Rel:

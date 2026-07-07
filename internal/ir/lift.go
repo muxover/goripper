@@ -27,7 +27,7 @@ func Lift(fn functions.Function, c *cfg.CFG, textData []byte, textVA uint64, add
 	for _, bb := range c.Blocks {
 		irb := &IRBlock{
 			ID:    bb.ID,
-			Label: blockLabel(bb.ID),
+			Label: blockLabel(bb.StartPC),
 			Succs: append([]int(nil), bb.Succs...),
 			Preds: append([]int(nil), bb.Preds...),
 		}
@@ -56,7 +56,7 @@ func LiftArch(fn functions.Function, c *cfg.CFG, textData []byte, textVA uint64,
 	for _, bb := range c.Blocks {
 		irb := &IRBlock{
 			ID:    bb.ID,
-			Label: blockLabel(bb.ID),
+			Label: blockLabel(bb.StartPC),
 			Succs: append([]int(nil), bb.Succs...),
 			Preds: append([]int(nil), bb.Preds...),
 		}
@@ -159,8 +159,8 @@ func isRegVar(s string) bool {
 	return len(s) > 1 && s[0] == '_'
 }
 
-func blockLabel(id int) string {
-	return fmt.Sprintf("L%d", id)
+func blockLabel(startPC uint64) string {
+	return fmt.Sprintf("L_0x%x", startPC)
 }
 
 func mkComment(text string) IRInstr {

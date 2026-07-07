@@ -254,7 +254,8 @@ func TestPropTypes_LoadIsPointer(t *testing.T) {
 	}
 }
 
-// TestBlockLabel verifies that block labels follow "L<id>" format.
+// TestBlockLabel verifies that block labels use the "L_0x<startPC>" format so they
+// match the address-based targets emitted for jumps.
 func TestBlockLabel(t *testing.T) {
 	fn := makeFn("main.F", "main", 0x1000, 1)
 	// Single NOP (0x90) to make a non-empty block.
@@ -271,8 +272,8 @@ func TestBlockLabel(t *testing.T) {
 	if len(f.Blocks) == 0 {
 		t.Fatal("expected at least one block")
 	}
-	if f.Blocks[0].Label != "L5" {
-		t.Errorf("expected label L5, got %q", f.Blocks[0].Label)
+	if f.Blocks[0].Label != "L_0x1000" {
+		t.Errorf("expected label L_0x1000, got %q", f.Blocks[0].Label)
 	}
 }
 
