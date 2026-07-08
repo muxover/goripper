@@ -68,6 +68,7 @@ func LiftBinary(binaryPath string, maxFuncs int) ([]*ir.IRFunc, error) {
 		}
 		f := ir.LiftArch(fn, c, textData, textVA, addrToName, arch)
 		ir.FilterBoilerplate(f)
+		ir.ReconstructFrame(f)
 		ir.RenameVars(f)
 		ir.RecoverVars(f)
 		ir.PropTypes(f, nil)
