@@ -1,122 +1,307 @@
 package ir
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
-// Within each basic block, every write to a register variable (_rXX) creates
-// a new versioned name (_rXX_vN). Reads see the most recently written version.
-// At block boundaries, versions flow from the single predecessor; join points
-// get phi-like assignments at the top of the block (one assignment per live reg).
+// RenameVars converts the lifted IR into SSA form. Every write to a register
+// variable (_rXX) becomes a fresh version (_rXX_vN); phi nodes are placed at the
+// iterated dominance frontier of each definition and their operands are filled from
+// the version live at the end of each predecessor; reads are rewritten to the
+// version live at that point. Register tokens embedded in source, store-address,
+// and condition expressions are renamed in place. The _rXX_vN naming is relied on by
+// RecoverVars.
 func RenameVars(f *IRFunc) {
 	if len(f.Blocks) == 0 {
 		return
 	}
 
-	// exitState[blockID] = map of reg → version at block exit.
-	exitState := make([]map[string]string, len(f.Blocks))
+	dom := BuildDomTree(f)
+	blockByID := make(map[int]*IRBlock, len(f.Blocks))
+	for _, b := range f.Blocks {
+		blockByID[b.ID] = b
+	}
+	entry := f.Blocks[0].ID
+
+	placePhis(f, dom, entry, blockByID)
 
 	counter := make(map[string]int)
+	stacks := make(map[string][]string)
 
-	// Seed entry state with v0 for each known parameter register so that
-	// any use of the raw register name in the entry block (e.g. AND RAX, mask)
-	// resolves to the initial versioned name rather than staying unversioned.
-	entryState := make(map[string]string)
+	// Parameters are defined at entry and dominate the whole function.
 	for _, p := range f.Params {
 		if isRegVar(p) {
-			v0 := freshVersion(p, counter)
-			entryState[p] = v0
-			f.Vars[v0] = ""
+			v := freshVersion(p, counter)
+			stacks[p] = append(stacks[p], v)
+			f.Vars[v] = ""
 		}
 	}
 
-	// Process blocks in ID order (not necessarily dominance order, but good
-	// enough for linear code and simple loops since we propagate from preds).
-	processed := make([]bool, len(f.Blocks))
+	visited := make(map[int]bool, len(f.Blocks))
+	renameBlock(f, dom, blockByID, entry, counter, stacks, visited)
 
-	idToIdx := make(map[int]int, len(f.Blocks))
-	for i, b := range f.Blocks {
-		idToIdx[b.ID] = i
+	// Unreachable blocks never get dom-tree renaming; version their defs locally so
+	// nothing is left referencing a bare register.
+	for _, b := range f.Blocks {
+		if !visited[b.ID] {
+			renameUnreachable(f, b, counter)
+		}
 	}
 
-	var processBlock func(idx int, incoming map[string]string)
-	processBlock = func(idx int, incoming map[string]string) {
-		if processed[idx] {
-			return
+	compactPhis(f)
+}
+
+// placePhis inserts phi placeholders (Dst empty, Meta = base register, Src sized to
+// the predecessor count) at the iterated dominance frontier of every definition.
+func placePhis(f *IRFunc, dom *DomTree, entry int, blockByID map[int]*IRBlock) {
+	df := dominanceFrontiers(f, dom)
+
+	defsites := make(map[string]map[int]bool)
+	addDef := func(base string, bid int) {
+		if defsites[base] == nil {
+			defsites[base] = make(map[int]bool)
 		}
-		processed[idx] = true
-
-		blk := f.Blocks[idx]
-		cur := make(map[string]string, len(incoming))
-		for k, v := range incoming {
-			cur[k] = v
+		defsites[base][bid] = true
+	}
+	for _, p := range f.Params {
+		if isRegVar(p) {
+			addDef(p, entry)
 		}
-
-		var newInstrs []IRInstr
-
-		// Emit phi-like assignments at block entry for versions inherited from preds.
-		// (Only emit if there are multiple predecessors and version diverges.)
-		if len(blk.Preds) > 1 {
-			for reg, ver := range cur {
-				phiDst := freshVersion(reg, counter)
-				newInstrs = append(newInstrs, IRInstr{
-					Op:  OpPhi,
-					Dst: phiDst,
-					Src: []string{ver},
-				})
-				cur[reg] = phiDst
+	}
+	for _, b := range f.Blocks {
+		for _, ins := range b.Instrs {
+			if ins.Dst != "" && isRegVar(ins.Dst) {
+				addDef(ins.Dst, b.ID)
 			}
 		}
+	}
 
-		for _, instr := range blk.Instrs {
-			renamed := instr
+	bases := make([]string, 0, len(defsites))
+	for base := range defsites {
+		bases = append(bases, base)
+	}
+	sort.Strings(bases)
 
-			renamed.Src = renameSrcs(instr.Src, cur)
-			if instr.Meta != "" && instr.Op == OpIf {
-				// The condition string may reference register vars; rename them.
-				renamed.Meta = renameExpr(instr.Meta, cur)
-			}
-
-			if instr.Dst != "" && isRegVar(instr.Dst) {
-				newVer := freshVersion(instr.Dst, counter)
-				renamed.Dst = newVer
-				cur[instr.Dst] = newVer
-			}
-
-			newInstrs = append(newInstrs, renamed)
+	hasPhi := make(map[int]map[string]bool)
+	for _, base := range bases {
+		var work []int
+		for bid := range defsites[base] {
+			work = append(work, bid)
 		}
-
-		blk.Instrs = newInstrs
-		exitState[idx] = copyMap(cur)
-
-		for _, succID := range blk.Succs {
-			if si, ok := idToIdx[succID]; ok {
-				if !processed[si] {
-					// Build incoming state: use this block's exit if no prior state,
-					// or intersect with existing state from another predecessor.
-					succIncoming := exitState[si]
-					if succIncoming == nil {
-						processBlock(si, cur)
-					}
+		for len(work) > 0 {
+			b := work[len(work)-1]
+			work = work[:len(work)-1]
+			for _, d := range df[b] {
+				if hasPhi[d] == nil {
+					hasPhi[d] = make(map[string]bool)
+				}
+				if hasPhi[d][base] {
+					continue
+				}
+				hasPhi[d][base] = true
+				blk := blockByID[d]
+				phi := IRInstr{Op: OpPhi, Meta: base, Src: make([]string, len(blk.Preds))}
+				blk.Instrs = append([]IRInstr{phi}, blk.Instrs...)
+				if !defsites[base][d] {
+					defsites[base][d] = true
+					work = append(work, d)
 				}
 			}
 		}
 	}
+}
 
-	processBlock(0, entryState)
+func renameBlock(f *IRFunc, dom *DomTree, blockByID map[int]*IRBlock, bid int, counter map[string]int, stacks map[string][]string, visited map[int]bool) {
+	visited[bid] = true
+	blk := blockByID[bid]
+	var pushed []string
 
-	// Process any blocks not yet reached (e.g. multiple entry points, dead code).
-	for i := range f.Blocks {
-		if !processed[i] {
-			processBlock(i, make(map[string]string))
+	for i := range blk.Instrs {
+		ins := &blk.Instrs[i]
+		if ins.Op == OpPhi && ins.Dst == "" {
+			base := ins.Meta
+			v := freshVersion(base, counter)
+			ins.Dst = v
+			f.Vars[v] = ""
+			stacks[base] = append(stacks[base], v)
+			pushed = append(pushed, base)
 		}
 	}
 
-	for _, blk := range f.Blocks {
-		for _, instr := range blk.Instrs {
-			if instr.Dst != "" {
-				f.Vars[instr.Dst] = "" // type filled by type propagation
+	for i := range blk.Instrs {
+		ins := &blk.Instrs[i]
+		if ins.Op == OpPhi {
+			continue
+		}
+		cur := topMap(stacks)
+		ins.Src = renameSrcs(ins.Src, cur)
+		if ins.Op == OpIf && ins.Meta != "" {
+			ins.Meta = renameExpr(ins.Meta, cur)
+		}
+		if ins.Dst == "" {
+			continue
+		}
+		if isRegVar(ins.Dst) {
+			base := ins.Dst
+			v := freshVersion(base, counter)
+			ins.Dst = v
+			f.Vars[v] = ""
+			stacks[base] = append(stacks[base], v)
+			pushed = append(pushed, base)
+		} else {
+			// Store/arith into a memory expression: the register tokens are reads.
+			ins.Dst = renameExpr(ins.Dst, cur)
+		}
+	}
+
+	for _, sid := range blk.Succs {
+		sblk := blockByID[sid]
+		if sblk == nil {
+			continue
+		}
+		idx := predIndex(sblk.Preds, bid)
+		if idx < 0 {
+			continue
+		}
+		for i := range sblk.Instrs {
+			ph := &sblk.Instrs[i]
+			if ph.Op != OpPhi || idx >= len(ph.Src) {
+				continue
+			}
+			if top := topOf(stacks, ph.Meta); top != "" {
+				ph.Src[idx] = top
 			}
 		}
 	}
+
+	for _, c := range dom.Children(bid) {
+		renameBlock(f, dom, blockByID, c, counter, stacks, visited)
+	}
+
+	for _, base := range pushed {
+		stacks[base] = stacks[base][:len(stacks[base])-1]
+	}
+}
+
+func renameUnreachable(f *IRFunc, blk *IRBlock, counter map[string]int) {
+	local := make(map[string][]string)
+	for i := range blk.Instrs {
+		ins := &blk.Instrs[i]
+		if ins.Op == OpPhi && ins.Dst == "" {
+			v := freshVersion(ins.Meta, counter)
+			ins.Dst = v
+			f.Vars[v] = ""
+			local[ins.Meta] = []string{v}
+		}
+	}
+	for i := range blk.Instrs {
+		ins := &blk.Instrs[i]
+		if ins.Op == OpPhi {
+			continue
+		}
+		cur := topMap(local)
+		ins.Src = renameSrcs(ins.Src, cur)
+		if ins.Op == OpIf && ins.Meta != "" {
+			ins.Meta = renameExpr(ins.Meta, cur)
+		}
+		if ins.Dst == "" {
+			continue
+		}
+		if isRegVar(ins.Dst) {
+			v := freshVersion(ins.Dst, counter)
+			local[ins.Dst] = []string{v}
+			ins.Dst = v
+			f.Vars[v] = ""
+		} else {
+			ins.Dst = renameExpr(ins.Dst, cur)
+		}
+	}
+}
+
+// compactPhis drops empty and duplicate operands left by unreachable predecessors
+// and clears the base marker stashed in Meta during placement.
+func compactPhis(f *IRFunc) {
+	for _, b := range f.Blocks {
+		for i := range b.Instrs {
+			ins := &b.Instrs[i]
+			if ins.Op != OpPhi {
+				continue
+			}
+			var ops []string
+			seen := make(map[string]bool)
+			for _, s := range ins.Src {
+				if s == "" || s == ins.Dst || seen[s] {
+					continue
+				}
+				seen[s] = true
+				ops = append(ops, s)
+			}
+			if len(ops) == 0 {
+				ops = []string{ins.Meta}
+			}
+			ins.Src = ops
+			ins.Meta = ""
+		}
+	}
+}
+
+// dominanceFrontiers computes DF(b) for every block via the Cooper-Harvey-Kennedy
+// runner walk: for each join block, walk each predecessor up the dom tree until the
+// join's immediate dominator, adding the join to every block passed.
+func dominanceFrontiers(f *IRFunc, dom *DomTree) map[int][]int {
+	frontier := make(map[int]map[int]bool)
+	for _, b := range f.Blocks {
+		if len(b.Preds) < 2 {
+			continue
+		}
+		idomB := dom.Idom(b.ID)
+		for _, p := range b.Preds {
+			for runner := p; runner != -1 && runner != idomB; runner = dom.Idom(runner) {
+				if frontier[runner] == nil {
+					frontier[runner] = make(map[int]bool)
+				}
+				frontier[runner][b.ID] = true
+			}
+		}
+	}
+	out := make(map[int][]int, len(frontier))
+	for k, set := range frontier {
+		ids := make([]int, 0, len(set))
+		for id := range set {
+			ids = append(ids, id)
+		}
+		sort.Ints(ids)
+		out[k] = ids
+	}
+	return out
+}
+
+func predIndex(preds []int, id int) int {
+	for i, p := range preds {
+		if p == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func topOf(stacks map[string][]string, base string) string {
+	s := stacks[base]
+	if len(s) == 0 {
+		return ""
+	}
+	return s[len(s)-1]
+}
+
+func topMap(stacks map[string][]string) map[string]string {
+	cur := make(map[string]string, len(stacks))
+	for base, s := range stacks {
+		if len(s) > 0 {
+			cur[base] = s[len(s)-1]
+		}
+	}
+	return cur
 }
 
 func freshVersion(base string, counter map[string]int) string {
@@ -136,8 +321,8 @@ func renameSrcs(srcs []string, cur map[string]string) []string {
 	return out
 }
 
-// renameExpr rewrites register variable references inside an expression string.
-// Only exact token matches are replaced to avoid partial name collisions.
+// renameExpr rewrites whole-word register references inside an expression using the
+// current version map.
 func renameExpr(expr string, cur map[string]string) string {
 	result := expr
 	for old, newV := range cur {
@@ -149,8 +334,6 @@ func renameExpr(expr string, cur map[string]string) string {
 	return result
 }
 
-// replaceWord replaces whole-word occurrences of old with newV.
-// "word" here means surrounded by non-alphanumeric/non-underscore characters.
 func replaceWord(s, old, newV string) string {
 	out := make([]byte, 0, len(s))
 	i := 0
@@ -160,7 +343,6 @@ func replaceWord(s, old, newV string) string {
 			out = append(out, s[i:]...)
 			break
 		}
-		// Check word boundaries.
 		leftOK := j == 0 || !isWordChar(s[j-1])
 		rightOK := j+len(old) >= len(s) || !isWordChar(s[j+len(old)])
 		if leftOK && rightOK {
@@ -189,12 +371,4 @@ func indexOf(s, sub string, start int) int {
 
 func isWordChar(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
-}
-
-func copyMap(m map[string]string) map[string]string {
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
 }
